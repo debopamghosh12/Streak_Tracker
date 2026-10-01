@@ -4,7 +4,13 @@ const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 function create(): SupabaseClient | null {
-  if (!url || !anonKey) return null; // local-only mode
+  if (!url || !anonKey) {
+    // local-only mode; in dev, say why the "Sign in to sync" pill is hidden (booleans only, never values)
+    if (import.meta.env.DEV) {
+      console.info('[prisma] Sync disabled — env vars loaded:', { VITE_SUPABASE_URL: !!url, VITE_SUPABASE_ANON_KEY: !!anonKey }, '— fill in .env and restart `npm run dev`.');
+    }
+    return null;
+  }
   try {
     return createClient(url, anonKey, {
       auth: {

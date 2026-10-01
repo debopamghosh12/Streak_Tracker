@@ -54,3 +54,22 @@ input {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Landing hero: a few stars twinkle gently (off with reduced motion) */
+@keyframes sky-twinkle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+.sky-twinkle {
+  animation: sky-twinkle 4.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sky-twinkle {
+    animation: none;
+  }
+}

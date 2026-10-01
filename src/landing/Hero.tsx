@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { Suspense, lazy, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { WordsPullUp } from '../components/WordsPullUp';
@@ -8,9 +9,14 @@ import { useNow } from '../lib/hooks';
 import { currentStreak } from '../lib/streak';
 import { weekNumberFor } from '../lib/dates';
 import { plannedSyllabusPercent } from '../lib/planModel';
+import { usePrefersReducedMotion } from '../lib/hooks';
+import { textShadowStrength } from '../lib/dayCycle';
+import { SkyLayers } from './sky/SkyLayers';
+import { useSkyState } from './sky/useSkyState';
 
-const HERO_VIDEO =
-  'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260405_170732_8a9ccda6-5cff-4628-b164-059c500a2b41.mp4';
+// Dev-only scrubber: the dynamic import is dropped from production builds.
+const SkyDevPanel = import.meta.env.DEV ? lazy(() => import('./sky/SkyDevPanel')) : null;
+
 const ease = [0.16, 1, 0.3, 1] as const;
 
 export function Hero() {
@@ -21,21 +27,31 @@ export function Hero() {
   const week = weekNumberFor(now);
   const syllabusPct = plannedSyllabusPercent(state.plan, state.topicsDone);
 
+  // Day–night grade synced to the visitor's clock (or ?time= / ?date=, or the dev scrubber).
+  const [scrub, setScrub] = useState<number | null>(null);
+  const [scrubbed, setScrubbed] = useState(false);
+  const { sky, anchors, at } = useSkyState(scrub);
+  const reducedMotion = usePrefersReducedMotion();
+  const transitionMs = reducedMotion ? 0 : scrubbed ? 400 : 60_000;
+  const shade = textShadowStrength(sky);
+  const textStyle = {
+    textShadow: shade > 0 ? `0 1px 14px rgba(0, 0, 0, ${(0.6 * shade).toFixed(2)}), 0 0 2px rgba(0, 0, 0, ${(0.35 * shade).toFixed(2)})` : 'none',
+    transition: transitionMs ? `text-shadow ${transitionMs}ms linear` : undefined,
+  };
+
   const scrollToAbout = () => document.getElementById('about')?.scrollIntoView({ behavior: 'smooth' });
 
   return (
     <section className="h-screen p-4 md:p-6 bg-black">
       <div className="relative h-full w-full rounded-2xl md:rounded-[2rem] overflow-hidden">
-        <video
-          className="absolute inset-0 w-full h-full object-cover"
-          src={HERO_VIDEO}
-          autoPlay
-          loop
-          muted
-          playsInline
-        />
+        <SkyLayers sky={sky} transitionMs={transitionMs} twinkle={!reducedMotion} />
         <div className="noise-overlay absolute inset-0 opacity-[0.7] mix-blend-overlay pointer-events-none" />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60 pointer-events-none" />
+        {/* Readability gradient: fixed top, bottom strength follows the scene (stronger when bright) */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-transparent pointer-events-none" />
+        <div
+          className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black pointer-events-none"
+          style={{ opacity: sky.bottomShade, transition: transitionMs ? `opacity ${transitionMs}ms linear` : undefined, willChange: 'opacity' }}
+        />
 
         <div className="absolute top-0 left-1/2 -translate-x-1/2 z-10">
           <PillShell>
@@ -63,7 +79,7 @@ export function Hero() {
             <div className="col-span-12 lg:col-span-4 flex flex-col gap-4 lg:pb-[2vw]">
               <motion.p
                 className="text-primary/70 text-xs sm:text-sm md:text-base max-w-md"
-                style={{ lineHeight: 1.2 }}
+                style={{ lineHeight: 1.2, ...textStyle }}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5, duration: 0.8, ease }}
@@ -73,6 +89,7 @@ export function Hero() {
               </motion.p>
               <motion.p
                 className="text-primary text-xs sm:text-sm"
+                style={textStyle}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.6, duration: 0.8, ease }}
@@ -99,6 +116,20 @@ export function Hero() {
           </div>
         </div>
       </div>
+      {SkyDevPanel && (
+        <Suspense fallback={null}>
+          <SkyDevPanel
+            minutes={scrub}
+            liveMinutes={at.getHours() * 60 + at.getMinutes()}
+            onChange={(m) => {
+              setScrubbed(m != null);
+              setScrub(m);
+            }}
+            sky={sky}
+            anchors={anchors}
+          />
+        </Suspense>
+      )}
     </section>
   );
 }

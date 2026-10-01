@@ -6,5 +6,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Day–night tests use local clock times; pin the zone so they're deterministic anywhere.
+    env: { TZ: 'Asia/Kolkata' },
   },
 });

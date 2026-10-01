@@ -78,7 +78,7 @@ export function AppShell() {
           className="absolute left-4 md:left-6 top-2 md:top-3 text-base md:text-xl tracking-[-0.04em] min-h-[40px] items-center hidden sm:inline-flex"
           style={{ color: '#E1E0CC' }}
         >
-          Prisma<sup className="text-[0.6em] -top-[0.4em]">*</sup>
+          Persist<sup className="text-[0.6em] -top-[0.4em]">*</sup>
         </Link>
         <div className="flex justify-center">
           <PillShell>

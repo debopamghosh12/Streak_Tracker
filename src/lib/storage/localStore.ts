@@ -4,6 +4,8 @@ import { tombstoneItem } from './diff';
 import { browserKV, readJSON, writeJSON } from './kv';
 import type { CarriedStatus, KV, SyncRecord, SyncedSettings, TableName, TrackerStorage } from './types';
 
+// Keys keep the app's original name ("prisma-") on purpose: renaming them would orphan
+// everyone's saved progress. The brand is now Persist; storage keys are not user-visible.
 export const STATE_KEY = 'prisma-tracker-v2';
 export const LEGACY_KEY = 'prisma-tracker-v1';
 export const META_KEY = 'prisma-meta-v2';

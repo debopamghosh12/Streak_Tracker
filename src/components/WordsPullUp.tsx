@@ -10,7 +10,7 @@ interface Props {
   stagger?: number;
 }
 
-/** Each word slides up from y:20 with a staggered delay, once in view. */
+/** Each word slides up from y:20 with a staggered delay, once in view. `showAsterisk` adds a superscript * after the final character. */
 export function WordsPullUp({ text, className = '', style, showAsterisk = false, delay = 0, stagger = 0.08 }: Props) {
   const ref = useRef<HTMLSpanElement>(null);
   const inView = useInView(ref, { once: true });
@@ -20,7 +20,7 @@ export function WordsPullUp({ text, className = '', style, showAsterisk = false,
     <span ref={ref} className={`inline-flex flex-wrap ${className}`} style={style}>
       {words.map((word, i) => {
         const isLast = i === words.length - 1;
-        const withStar = showAsterisk && isLast && word.endsWith('a');
+        const withStar = showAsterisk && isLast && word.length > 0;
         return (
           <span key={i} className={`inline-block overflow-hidden pb-[0.08em] ${withStar ? 'pr-[0.32em]' : ''}`}>
             <motion.span
@@ -33,7 +33,7 @@ export function WordsPullUp({ text, className = '', style, showAsterisk = false,
                 <>
                   {word.slice(0, -1)}
                   <span className="relative inline-block">
-                    a
+                    {word.slice(-1)}
                     <span className="absolute top-[0.65em] -right-[0.3em] text-[0.31em] leading-none">*</span>
                   </span>
                 </>

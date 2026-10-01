@@ -24,6 +24,7 @@ export interface SyncStatus {
   pending: number;
 }
 
+// Old "prisma-" prefix kept on purpose: renaming would lose sync cursors and the pre-sync backup.
 export const SYNC_KEY = 'prisma-sync-v1';
 export const BACKUP_KEY = 'prisma-backup-before-sync';
 

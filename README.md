@@ -1,7 +1,7 @@
-# Prisma\*
+# Persist\*
 
 **A personal study tracker for placement season.** Thirteen weeks, five subjects, one streak.
-Prisma shows what's planned for today, tracks what got done, carries unfinished work forward,
+Persist shows what's planned for today, tracks what got done, carries unfinished work forward,
 and keeps the streak honest. It runs offline in the browser and can optionally sync between
 laptop and phone through Supabase.
 
@@ -14,7 +14,7 @@ laptop and phone through Supabase.
 
 ### Landing page (`/`)
 A dark landing page in a warm cream palette, with three sections:
-- **Hero**: video background, large animated "Prisma\*" heading, and live stats (current streak, week, syllabus %).
+- **Hero**: video background, large animated "Persist\*" heading, and live stats (current streak, week, syllabus %).
 - **About**: what the plan is, with text that fades in as you scroll.
 - **Features**: cards that animate in, linking into the app.
 
@@ -153,6 +153,8 @@ supabase/migrations/001_init.sql   # Tables, triggers, indexes, RLS policies
 - **Swappable backend:** the app only uses the `RemoteBackend` interface (`src/lib/storage/types.ts`). To move to another server (e.g. Spring Boot), implement it and change one line in `src/lib/storage/index.ts`.
 
 ### localStorage keys
+
+The keys keep the app's original name (*Prisma*) on purpose: renaming them would orphan existing saved progress.
 
 | Key | Contents |
 | --- | --- |

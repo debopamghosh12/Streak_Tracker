@@ -7,7 +7,7 @@ function create(): SupabaseClient | null {
   if (!url || !anonKey) {
     // local-only mode; in dev, say why the "Sign in to sync" pill is hidden (booleans only, never values)
     if (import.meta.env.DEV) {
-      console.info('[prisma] Sync disabled — env vars loaded:', { VITE_SUPABASE_URL: !!url, VITE_SUPABASE_ANON_KEY: !!anonKey }, '— fill in .env and restart `npm run dev`.');
+      console.info('[persist] Sync disabled — env vars loaded:', { VITE_SUPABASE_URL: !!url, VITE_SUPABASE_ANON_KEY: !!anonKey }, '— fill in .env and restart `npm run dev`.');
     }
     return null;
   }
@@ -22,7 +22,7 @@ function create(): SupabaseClient | null {
       },
     });
   } catch (err) {
-    console.warn('[prisma] Supabase disabled — invalid VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY', err);
+    console.warn('[persist] Supabase disabled — invalid VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY', err);
     return null;
   }
 }

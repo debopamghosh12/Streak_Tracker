@@ -57,7 +57,7 @@ export function Hero() {
                 className="text-[26vw] sm:text-[24vw] md:text-[22vw] lg:text-[20vw] xl:text-[19vw] 2xl:text-[20vw] font-medium leading-[0.85] tracking-[-0.07em]"
                 style={{ color: '#E1E0CC' }}
               >
-                <WordsPullUp text="Prisma" showAsterisk />
+                <WordsPullUp text="Persist" showAsterisk />
               </h1>
             </div>
             <div className="col-span-12 lg:col-span-4 flex flex-col gap-4 lg:pb-[2vw]">
@@ -68,7 +68,7 @@ export function Hero() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5, duration: 0.8, ease }}
               >
-                Prisma is my daily system for placement season — thirteen weeks, five subjects, one streak. Show up, tick it
+                Persist is my daily system for placement season — thirteen weeks, five subjects, one streak. Show up, tick it
                 off, and let the plan carry the rest.
               </motion.p>
               <motion.p

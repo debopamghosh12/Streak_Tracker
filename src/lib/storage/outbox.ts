@@ -1,6 +1,7 @@
 import { readJSON, writeJSON } from './kv';
 import { TABLES, type KV, type RemoteBackend, type SyncRecord, type TableName } from './types';
 
+// Old "prisma-" prefix kept on purpose so queued uploads survive the rename to Persist.
 export const OUTBOX_KEY = 'prisma-outbox-v1';
 
 export interface OutboxEntry {

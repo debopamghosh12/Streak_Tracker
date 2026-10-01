@@ -20,7 +20,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `prisma-backup-${format(new Date(), 'yyyy-MM-dd')}.json`;
+      a.download = `persist-backup-${format(new Date(), 'yyyy-MM-dd')}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast('Backup exported');
@@ -38,7 +38,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
       toast('Backup imported');
       onClose();
     } catch {
-      setError("That file doesn't look like a Prisma backup.");
+      setError("That file doesn't look like a Persist backup.");
     }
   };
 

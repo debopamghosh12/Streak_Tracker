@@ -1,4 +1,4 @@
--- Prisma: initial schema for multi-device sync.
+-- Persist: initial schema for multi-device sync.
 -- Run once in the Supabase SQL editor (or `supabase db push`).
 -- Every row belongs to one user (user_id defaults to auth.uid()); Row Level Security
 -- limits every query to the signed-in user's own rows.

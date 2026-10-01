@@ -52,6 +52,36 @@ export interface DayRecord {
   movedOut: string[];
 }
 
+/** Topic text per subject for a week; null = not set yet. */
+export type WeekTopics = Record<SubjectId, string | null>;
+
+/** A user-defined (or user-edited) week. Same weekNumber as a base week = override. */
+export interface UserWeek {
+  weekNumber: number;
+  /** Explicit phase; null = whichever phase's week range contains it. */
+  phaseId: string | null;
+  topics: WeekTopics;
+  /** Optional custom weekly target text per subject (defaults to the standard five). */
+  targets?: Partial<Record<SubjectId, string>>;
+}
+
+/** A user-defined phase. endWeek null = open-ended. */
+export interface UserPhase {
+  id: string;
+  name: string;
+  startWeek: number;
+  endWeek: number | null;
+  goal?: string;
+  /** Running DSA problem target to reach by the end of this phase. */
+  dsaGoal?: number;
+}
+
+export interface UserPlan {
+  /** keyed by String(weekNumber) */
+  weeks: Record<string, UserWeek>;
+  phases: Record<string, UserPhase>;
+}
+
 export interface ReviewRecord {
   javaShipped: boolean;
   aiBuilt: boolean;
@@ -70,6 +100,8 @@ export interface TrackerState {
   /** Last past date whose unfinished tasks have been rolled forward. */
   rolledThrough: string;
   reviews: Record<string, ReviewRecord>;
+  /** User weeks and phases layered over the base 13-week plan. */
+  plan: UserPlan;
   settings: { version: 2 };
 }
 
@@ -98,6 +130,10 @@ export type Action =
   | { type: 'restoreCarried'; item: CarriedItem; index: number }
   | { type: 'rollover'; today: string }
   | { type: 'freeze'; date: string }
+  | { type: 'upsertPlanWeek'; week: UserWeek }
+  | { type: 'deletePlanWeek'; weekNumber: number }
+  | { type: 'upsertPlanPhase'; phase: UserPhase }
+  | { type: 'deletePlanPhase'; id: string }
   | { type: 'updateReview'; week: number; patch: Partial<ReviewRecord> }
   | { type: 'import'; state: unknown; today: string }
   | { type: 'reset'; today: string }

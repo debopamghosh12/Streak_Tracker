@@ -4,10 +4,12 @@ import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { PageTitle } from '../../components/PageTitle';
 import { Card, ProgressRing, RoundCheck, SectionLabel, SubjectDot, listItem, useToast } from '../../components/ui';
-import { ALL_TOPICS, DAILY_COUNTERS, SUBJECTS, SUBJECT_BY_ID, TIMETABLE, type CounterField, type Week } from '../../data/plan';
-import { displayTime, fromKey, isSunday, planStatus, shortDate, toKey, toMinutes, weekDays, weekFor, weekNumberFor } from '../../lib/dates';
+import { DAILY_COUNTERS, SUBJECTS, SUBJECT_BY_ID, TIMETABLE, type CounterField } from '../../data/plan';
+import { displayTime, fromKey, isSunday, planStatus, shortDate, toKey, toMinutes, weekDays, weekNumberFor } from '../../lib/dates';
+import { getWeek, type EffectiveTopic, type EffectiveWeek } from '../../lib/planModel';
+import { Link } from 'react-router-dom';
 import { copyText, useNow } from '../../lib/hooks';
-import { currentStreak, daysCounted, dayStats, longestStreak } from '../../lib/streak';
+import { currentStreak, dayStats } from '../../lib/streak';
 import { getDayTasks, makeCarried, tomorrowKey, type DayTask, type DayTasks } from '../../lib/tasks';
 import { emptyDay, useStore } from '../../state/store';
 import type { CarriedItem, DayRecord, TaskSubject } from '../../state/types';
@@ -28,13 +30,13 @@ export default function Today() {
   const now = useNow();
   const key = toKey(now);
   const day: DayRecord = state.days[key] ?? emptyDay();
-  const week = weekFor(now);
+  const week = getWeek(state.plan, weekNumberFor(now));
   const sunday = isSunday(now);
   const stats = dayStats(day, now);
   const status = planStatus(now);
   const streak = currentStreak(state, now);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const tasks = useMemo(() => getDayTasks(day, now), [day, key]);
+  const tasks = useMemo(() => getDayTasks(day, now, state.plan), [day, key, state.plan]);
   const carriedToday = state.carried.filter((c) => c.currentDate === key);
   const cleared = carriedToday.filter((c) => c.done);
   const pending = carriedToday.filter((c) => !c.done);
@@ -94,13 +96,23 @@ export default function Today() {
           today is saved, but the streak heatmap begins on day one.
         </Card>
       )}
-      {status === 'after' && <PlanComplete />}
 
       <div className="space-y-4">
         <CarriedOver items={carriedToday} today={key} />
 
         <Card>
-          <SectionLabel right={<span className="text-xs text-gray-500">{sunday ? 'Sunday · 5 hrs' : `Week ${week.n} · Mon–Sat`}</span>}>
+          <SectionLabel
+            right={
+              <span className="text-xs text-gray-500 inline-flex items-center gap-3">
+                {!sunday && !week.allSet && (
+                  <Link to="/app/syllabus" className="text-primary underline underline-offset-4 hover:opacity-80 min-h-[40px] -my-3 inline-flex items-center">
+                    Set topics
+                  </Link>
+                )}
+                {sunday ? 'Sunday · 5 hrs' : `Week ${week.n} · Mon–Sat`}
+              </span>
+            }
+          >
             {sunday ? 'Sunday checkpoint' : 'Timetable'}
           </SectionLabel>
           <DayList dateKey={key} date={now} day={day} tasks={tasks} sunday={sunday} now={now} />
@@ -806,23 +818,25 @@ function Counter({
 
 /* ---------------- Topics covered ---------------- */
 
-function TopicsCovered({ day, week, dateKey }: { day: DayRecord; week: Week; dateKey: string }) {
+function TopicsCovered({ day, week, dateKey }: { day: DayRecord; week: EffectiveWeek; dateKey: string }) {
   const { state, dispatch } = useStore();
   const [text, setText] = useState('');
   const [focused, setFocused] = useState(false);
 
   const suggestions = useMemo(() => {
     const q = text.trim().toLowerCase();
-    return SUBJECTS.map((s) => week.topics[s.id]).filter(
-      (t) => !day.topicsCovered.includes(t.title) && (!q || t.title.toLowerCase().includes(q) || SUBJECT_BY_ID[t.subject].short.toLowerCase().includes(q)),
-    );
+    return SUBJECTS.map((s) => week.topics[s.id])
+      .filter((t): t is EffectiveTopic & { title: string } => !!t.title)
+      .filter(
+        (t) => !day.topicsCovered.includes(t.title) && (!q || t.title.toLowerCase().includes(q) || SUBJECT_BY_ID[t.subject].short.toLowerCase().includes(q)),
+      );
   }, [text, week, day.topicsCovered]);
 
   const add = (tag: string, topicId?: string) => {
     const t = tag.trim();
     if (!t) return;
     // A typed tag that exactly matches a topic also marks it.
-    const match = topicId ?? ALL_TOPICS.find((x) => x.week === week.n && x.title.toLowerCase() === t.toLowerCase())?.id;
+    const match = topicId ?? SUBJECTS.map((x) => week.topics[x.id]).find((x) => x.title?.toLowerCase() === t.toLowerCase())?.id;
     dispatch({ type: 'addTag', date: dateKey, tag: t, topicId: match });
     setText('');
   };
@@ -941,39 +955,6 @@ function CheckIn({
         rows={5}
         className="w-full flex-1 bg-[#212121] rounded-xl p-4 text-sm placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-primary/40 resize-y"
       />
-    </Card>
-  );
-}
-
-/* ---------------- After the plan ---------------- */
-
-function PlanComplete() {
-  const { state } = useStore();
-  const now = useNow();
-  const topics = Object.keys(state.topicsDone).length;
-  const dsa = Object.values(state.days).reduce((s, d) => s + d.dsa, 0);
-  const stats = [
-    { label: 'Days counted', value: `${daysCounted(state, now)} / 91` },
-    { label: 'Longest streak', value: `${longestStreak(state, now)} days` },
-    { label: 'Topics done', value: `${topics} / ${ALL_TOPICS.length}` },
-    { label: 'DSA problems', value: String(dsa) },
-  ];
-  return (
-    <Card className="mb-4">
-      <SectionLabel>Plan complete</SectionLabel>
-      <p className="text-2xl sm:text-3xl mb-4" style={TEXT}>
-        Thirteen weeks, <span className="italic font-serif">done.</span>
-      </p>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        {stats.map((s) => (
-          <div key={s.label} className="bg-[#212121] rounded-xl p-4">
-            <p className="text-xl" style={TEXT}>
-              {s.value}
-            </p>
-            <p className="text-xs text-gray-500">{s.label}</p>
-          </div>
-        ))}
-      </div>
     </Card>
   );
 }

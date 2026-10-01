@@ -3,7 +3,7 @@ import { useRef } from 'react';
 import { WordsPullUpMultiStyle } from '../components/WordsPullUpMultiStyle';
 
 const BODY =
-  'Three phases. Foundations through October, depth and real projects through November, interview mode through December. Every day has a plan, every week has a target, and every Sunday is a checkpoint. Miss a block, carry it forward. Miss a day, start again tomorrow.';
+  'It started with three phases: foundations, then depth and real projects, then interview mode. And it keeps going after that, one planned week at a time. Every day has a plan, every week has a target, and every Sunday is a checkpoint. Miss a block, carry it forward. Miss a day, start again tomorrow.';
 
 function AnimatedLetter({ char, index, total, progress }: { char: string; index: number; total: number; progress: MotionValue<number> }) {
   const charProgress = index / total;
@@ -26,7 +26,7 @@ export function About() {
           segments={[
             { text: 'I am Debopam,', className: 'font-normal' },
             { text: 'a final-year engineer in the making.', className: 'italic font-serif' },
-            { text: 'Ten hours a day of DSA, Spring Boot, CS fundamentals, AI and aptitude, until December.', className: 'font-normal' },
+            { text: 'Ten hours a day of DSA, Spring Boot, CS fundamentals, AI and aptitude — one week at a time.', className: 'font-normal' },
           ]}
         />
         <p ref={ref} className="text-[#DEDBC8] text-xs sm:text-sm md:text-base max-w-2xl mx-auto mt-10 md:mt-14 leading-relaxed">

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { v5 as uuidv5 } from 'uuid';
-import { emptyReview, sanitizeCarried, sanitizeDay } from '../../state/reducer';
+import { emptyReview, sanitizeCarried, sanitizeDay, sanitizeUserPhase, sanitizeUserWeek } from '../../state/reducer';
 import type { ReviewRecord } from '../../state/types';
 import { supabase } from '../supabase';
 import type { PulledRecord, RemoteBackend, RemoteUser, SyncRecord, TableName } from './types';
@@ -21,6 +21,8 @@ const CONFLICT: Record<TableName, string> = {
   topics_done: 'user_id,topic_id',
   reviews: 'user_id,week',
   settings: 'user_id',
+  plan_phases: 'user_id,id',
+  plan_weeks: 'user_id,week_number',
 };
 
 const KEY_COLUMNS: Record<TableName, string> = {
@@ -29,6 +31,8 @@ const KEY_COLUMNS: Record<TableName, string> = {
   topics_done: 'topic_id',
   reviews: 'week',
   settings: 'user_id',
+  plan_phases: 'id',
+  plan_weeks: 'week_number',
 };
 
 type Row = Record<string, unknown>;
@@ -61,6 +65,26 @@ export function toRow(r: SyncRecord, userId: string): Row {
       return { user_id: userId, week: Number(r.key), data: r.review };
     case 'settings':
       return { user_id: userId, data: r.settings };
+    case 'plan_phases':
+      return {
+        user_id: userId,
+        id: r.phase.id,
+        name: r.phase.name,
+        start_week: r.phase.startWeek,
+        end_week: r.phase.endWeek,
+        goal: r.phase.goal ?? null,
+        dsa_goal: r.phase.dsaGoal ?? null,
+        deleted: r.deleted,
+      };
+    case 'plan_weeks':
+      return {
+        user_id: userId,
+        week_number: r.week.weekNumber,
+        phase_id: r.week.phaseId,
+        topics: r.week.topics,
+        targets: r.week.targets ?? null,
+        deleted: r.deleted,
+      };
   }
 }
 
@@ -76,6 +100,10 @@ export function rowKey(table: TableName, row: Row): string {
       return String(row.week);
     case 'settings':
       return 'settings';
+    case 'plan_phases':
+      return String(row.id);
+    case 'plan_weeks':
+      return String(row.week_number);
   }
 }
 
@@ -111,7 +139,36 @@ export function fromRow(table: TableName, row: Row): PulledRecord | null {
         ? { table, key: 'settings', settings: { version: 2, rolledThrough: data.rolledThrough }, updatedAt }
         : null;
     }
+    case 'plan_phases': {
+      const phase = sanitizeUserPhase({
+        id: row.id,
+        name: row.name,
+        startWeek: row.start_week,
+        endWeek: row.end_week,
+        goal: row.goal ?? undefined,
+        dsaGoal: row.dsa_goal ?? undefined,
+      });
+      return phase ? { table, key, phase, deleted: !!row.deleted, updatedAt } : null;
+    }
+    case 'plan_weeks': {
+      const week = sanitizeUserWeek({ weekNumber: row.week_number, phaseId: row.phase_id, topics: row.topics, targets: row.targets });
+      return week ? { table, key, week, deleted: !!row.deleted, updatedAt } : null;
+    }
   }
+}
+
+/** PostgREST / Postgres "table doesn't exist" (e.g. 002_plan_extension.sql not run yet). */
+export function isMissingTable(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null;
+  return !!e && (e.code === 'PGRST205' || e.code === '42P01' || /could not find the table|does not exist/i.test(e.message ?? ''));
+}
+
+const warned = new Set<string>();
+function warnMissing(table: TableName) {
+  if (warned.has(table)) return;
+  warned.add(table);
+  const file = table.startsWith('plan_') ? '002_plan_extension.sql' : '001_init.sql';
+  console.warn(`[persist] Supabase table "${table}" is missing — run supabase/migrations/${file} in the SQL editor. Other data keeps syncing.`);
 }
 
 const toUser = (u: { id: string; email?: string | null } | null | undefined): RemoteUser | null =>
@@ -163,7 +220,10 @@ export function createSupabaseBackend(client: SupabaseClient | null = supabase):
         .from(table)
         .upsert(rows, { onConflict: CONFLICT[table] })
         .select(`${KEY_COLUMNS[table]},updated_at`);
-      if (error) throw error;
+      if (error) {
+        if (isMissingTable(error)) warnMissing(table); // stays queued; retried until the table exists
+        throw error;
+      }
       return ((data ?? []) as unknown as Row[]).map((row) => ({ key: rowKey(table, row), updatedAt: String(row.updated_at) }));
     },
 
@@ -174,7 +234,14 @@ export function createSupabaseBackend(client: SupabaseClient | null = supabase):
         let q = client.from(table).select('*').eq('user_id', uid).order('updated_at', { ascending: true }).range(from, from + PAGE - 1);
         if (since) q = q.gt('updated_at', since);
         const { data, error } = await q;
-        if (error) throw error;
+        if (error) {
+          // A table that doesn't exist yet reads as empty, so the rest of the data still syncs.
+          if (isMissingTable(error)) {
+            warnMissing(table);
+            return out;
+          }
+          throw error;
+        }
         const rows = (data ?? []) as Row[];
         for (const row of rows) {
           const rec = fromRow(table, row);

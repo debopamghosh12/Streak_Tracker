@@ -35,6 +35,13 @@ describe('row mapping', () => {
       { table: 'topics_done', key: 'w1-cs', doneOn: null },
       { table: 'reviews', key: '1', review: { javaShipped: true, aiBuilt: false, well: 'w', slipped: '', change: '' } },
       { table: 'settings', key: 'settings', settings: { version: 2, rolledThrough: '2026-10-04' } },
+      { table: 'plan_phases', key: 'p1', phase: { id: 'p1', name: 'Offers', startWeek: 14, endWeek: null, goal: 'Convert', dsaGoal: 450 }, deleted: false },
+      {
+        table: 'plan_weeks',
+        key: '14',
+        week: { weekNumber: 14, phaseId: 'p1', topics: { dsa: 'Graphs', java: null, cs: null, ai: null, apt: null }, targets: { dsa: '35 problems' } },
+        deleted: true,
+      },
     ];
     for (const r of records) {
       const row: Record<string, unknown> = { ...toRow(r, USER_A), updated_at: '2026-10-05T10:00:00.123456+00:00' };
@@ -54,6 +61,21 @@ describe('row mapping', () => {
 });
 
 describe('createSupabaseBackend', () => {
+  it('treats a missing plan table as empty on pull (002 not run yet)', async () => {
+    const missing = { code: 'PGRST205', message: "Could not find the table 'public.plan_weeks' in the schema cache" };
+    const query = { eq: () => query, order: () => query, range: () => query, gt: () => query, then: (r: (v: unknown) => void) => r({ data: null, error: missing }) };
+    const client = {
+      from: () => ({ select: () => query }),
+      auth: { getSession: async () => ({ data: { session: { user: { id: USER_A } } } }) },
+    } as unknown as SupabaseClient;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const backend = createSupabaseBackend(client)!;
+    await backend.getUser();
+    await expect(backend.pull('plan_weeks', null)).resolves.toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('002_plan_extension.sql'));
+    warn.mockRestore();
+  });
+
   it('returns null (local-only mode) without a client', () => {
     expect(createSupabaseBackend(null)).toBeNull();
   });

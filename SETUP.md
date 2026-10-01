@@ -38,14 +38,17 @@ VITE_SUPABASE_ANON_KEY=<anon or publishable key>
 
 Restart `npm run dev` after changing `.env`.
 
-## 3. Create the tables (run `001_init.sql`)
+## 3. Create the tables (run the migrations in order)
 
 1. Dashboard → **SQL Editor** → **New query**.
 2. Paste the whole of [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql) and click **Run**.
-3. Check **Table Editor**: you should see `days`, `carried_items`, `topics_done`, `reviews`,
-   `settings`, each marked **RLS enabled**.
+3. New query again → paste [`supabase/migrations/002_plan_extension.sql`](supabase/migrations/002_plan_extension.sql)
+   (your own weeks and phases beyond week 13) → **Run**.
+4. Check **Table Editor**: you should see `days`, `carried_items`, `topics_done`, `reviews`,
+   `settings`, `plan_phases`, `plan_weeks`, each marked **RLS enabled**.
 
-The script is idempotent (safe to run again). If you use the Supabase CLI instead:
+Both scripts are idempotent (safe to run again). If you skip `002`, everything else still syncs;
+plan edits stay on the device and the console says which file to run. If you use the Supabase CLI instead:
 `supabase link --project-ref <ref>` then `supabase db push`.
 
 ## 4. Auth: magic links and redirect URLs
@@ -116,7 +119,7 @@ Sign out from **Settings (gear) → Sign out**. Your data stays on the device.
 | --- | --- |
 | No "Sign in to sync" pill | Env vars missing or the dev server wasn't restarted after editing `.env`. |
 | Email link opens but you're not signed in | The origin isn't in **Redirect URLs**, or the link expired (request a new one). |
-| "Sync error, retrying" | Check the browser console. `relation "public.days" does not exist` → run `001_init.sql`. `JWT expired` → sign out and in. |
+| "Sync error, retrying" | Check the browser console. A missing `days`/`carried_items`/… table → run `001_init.sql`; missing `plan_weeks`/`plan_phases` → run `002_plan_extension.sql`. `JWT expired` → sign out and in. |
 | "Offline — saved locally" | Expected without internet; changes upload when you're back online. |
 | No email arrives | Built-in mailer rate limit — wait an hour or configure custom SMTP. |
 

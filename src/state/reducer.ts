@@ -2,7 +2,8 @@
 import { SUBJECTS } from '../data/plan';
 import { fromKey, toKey } from '../lib/dates';
 import { datesToRoll, makeCarried, unfinishedTasks, yesterdayKey } from '../lib/tasks';
-import type { Action, CarriedItem, CustomTask, DayRecord, Override, ReviewRecord, TaskSubject, TrackerState } from './types';
+import type { SubjectId } from '../data/plan';
+import type { Action, CarriedItem, CustomTask, DayRecord, Override, ReviewRecord, TaskSubject, TrackerState, UserPhase, UserPlan, UserWeek, WeekTopics } from './types';
 
 export const todayKey = () => toKey(new Date());
 
@@ -32,6 +33,7 @@ export const initialState = (today: string): TrackerState => ({
   carryDropped: [],
   rolledThrough: yesterdayKey(today),
   reviews: {},
+  plan: { weeks: {}, phases: {} },
   settings: { version: 2 },
 });
 
@@ -84,6 +86,67 @@ export function sanitizeDay(v: Record<string, unknown>): DayRecord {
   return d;
 }
 
+const SUBJECT_KEYS = ['dsa', 'java', 'cs', 'ai', 'apt'] as const;
+const weekNum = (v: unknown) => {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 1 && n <= 5000 ? n : null;
+};
+
+export function sanitizeUserWeek(v: unknown): UserWeek | null {
+  if (!isObj(v)) return null;
+  const n = weekNum(v.weekNumber);
+  if (!n) return null;
+  const rawTopics = isObj(v.topics) ? v.topics : {};
+  const topics = Object.fromEntries(
+    SUBJECT_KEYS.map((k) => {
+      const t = typeof rawTopics[k] === 'string' ? (rawTopics[k] as string).trim() : '';
+      return [k, t ? t.slice(0, 300) : null];
+    }),
+  ) as WeekTopics;
+  const week: UserWeek = { weekNumber: n, phaseId: typeof v.phaseId === 'string' && v.phaseId ? v.phaseId : null, topics };
+  if (isObj(v.targets)) {
+    const targets: Partial<Record<SubjectId, string>> = {};
+    for (const k of SUBJECT_KEYS) {
+      const t = v.targets[k];
+      if (typeof t === 'string' && t.trim()) targets[k] = t.trim().slice(0, 200);
+    }
+    if (Object.keys(targets).length) week.targets = targets;
+  }
+  return week;
+}
+
+export function sanitizeUserPhase(v: unknown): UserPhase | null {
+  if (!isObj(v) || typeof v.id !== 'string' || !v.id) return null;
+  const startWeek = weekNum(v.startWeek);
+  const name = str(v.name).trim().slice(0, 80);
+  if (!startWeek || !name) return null;
+  const end = v.endWeek == null ? null : weekNum(v.endWeek);
+  const phase: UserPhase = { id: v.id, name, startWeek, endWeek: end != null && end >= startWeek ? end : null };
+  const goal = str(v.goal).trim();
+  if (goal) phase.goal = goal.slice(0, 200);
+  const dsa = Number(v.dsaGoal);
+  if (Number.isInteger(dsa) && dsa > 0) phase.dsaGoal = dsa;
+  return phase;
+}
+
+export function sanitizePlan(v: unknown): UserPlan {
+  const plan: UserPlan = { weeks: {}, phases: {} };
+  if (!isObj(v)) return plan;
+  if (isObj(v.weeks)) {
+    for (const w of Object.values(v.weeks)) {
+      const s = sanitizeUserWeek(w);
+      if (s) plan.weeks[String(s.weekNumber)] = s;
+    }
+  }
+  if (isObj(v.phases)) {
+    for (const p of Object.values(v.phases)) {
+      const s = sanitizeUserPhase(p);
+      if (s) plan.phases[s.id] = s;
+    }
+  }
+  return plan;
+}
+
 export function sanitizeCarried(v: unknown): CarriedItem | null {
   if (!isObj(v) || typeof v.id !== 'string' || !isKey(v.sourceDate) || !isKey(v.currentDate)) return null;
   return {
@@ -116,7 +179,7 @@ export function rollover(state: TrackerState, today: string): TrackerState {
     const known = new Set([...carried.map((c) => c.id), ...state.carryDropped]);
     const fresh: CarriedItem[] = [];
     for (const k of datesToRoll(Object.keys(state.days), rolledThrough, today)) {
-      for (const t of unfinishedTasks(state.days[k], fromKey(k))) {
+      for (const t of unfinishedTasks(state.days[k], fromKey(k), state.plan)) {
         const item = makeCarried(k, t, today);
         if (known.has(item.id)) continue;
         known.add(item.id);
@@ -150,7 +213,8 @@ export function sanitize(raw: unknown, today: string): TrackerState {
   if (isObj(raw.topicsDone)) for (const [k, v] of Object.entries(raw.topicsDone)) if (isKey(v)) topicsDone[k] = v;
 
   const carryDropped = Array.isArray(raw.carryDropped) ? raw.carryDropped.filter((x): x is string => typeof x === 'string') : [];
-  const state: TrackerState = { ...base, days, reviews, topicsDone, carryDropped };
+  const plan = sanitizePlan(raw.plan);
+  const state: TrackerState = { ...base, days, reviews, topicsDone, carryDropped, plan };
 
   if (Array.isArray(raw.carried)) {
     state.carried = raw.carried.map(sanitizeCarried).filter((c): c is CarriedItem => !!c);
@@ -165,7 +229,7 @@ export function sanitize(raw: unknown, today: string): TrackerState {
     if (!isKey(on)) continue;
     const [src, taskId] = id.split(':');
     if (!isKey(src)) continue;
-    const t = unfinishedTasks(days[src], fromKey(src)).find((x) => x.id === taskId);
+    const t = unfinishedTasks(days[src], fromKey(src), plan).find((x) => x.id === taskId);
     if (!t) continue;
     state.carried.push({ ...makeCarried(src, t, on), done: true, completedOn: on });
   }
@@ -283,6 +347,30 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
     }
     case 'rollover':
       return rollover(state, action.today);
+    case 'upsertPlanWeek': {
+      const w = sanitizeUserWeek(action.week);
+      if (!w) return state;
+      return { ...state, plan: { ...state.plan, weeks: { ...state.plan.weeks, [String(w.weekNumber)]: w } } };
+    }
+    case 'deletePlanWeek': {
+      const key = String(action.weekNumber);
+      if (!(key in state.plan.weeks)) return state;
+      return { ...state, plan: { ...state.plan, weeks: without(state.plan.weeks, key) } };
+    }
+    case 'upsertPlanPhase': {
+      const p = sanitizeUserPhase(action.phase);
+      if (!p) return state;
+      return { ...state, plan: { ...state.plan, phases: { ...state.plan.phases, [p.id]: p } } };
+    }
+    case 'deletePlanPhase': {
+      if (!(action.id in state.plan.phases)) return state;
+      // Weeks pinned to the deleted phase fall back to range-based phases.
+      const weeks = Object.fromEntries(
+        Object.entries(state.plan.weeks).map(([k, w]) => [k, w.phaseId === action.id ? { ...w, phaseId: null } : w]),
+      );
+      const changed = Object.values(state.plan.weeks).some((w) => w.phaseId === action.id);
+      return { ...state, plan: { weeks: changed ? weeks : state.plan.weeks, phases: without(state.plan.phases, action.id) } };
+    }
     case 'freeze':
       return withDay(state, action.date, (d) => ({ ...d, frozen: true }));
     case 'updateReview': {

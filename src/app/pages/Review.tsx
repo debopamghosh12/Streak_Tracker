@@ -1,21 +1,12 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, ChevronLeft, ChevronRight, Copy, X } from 'lucide-react';
 import { useState } from 'react';
-import { differenceInCalendarDays, format } from 'date-fns';
+import { differenceInCalendarDays } from 'date-fns';
 import { PageTitle } from '../../components/PageTitle';
 import { Card, ProgressRing, RoundCheck, SectionLabel, SubjectDot, listItem, useToast } from '../../components/ui';
-import {
-  ALL_TOPICS,
-  SUBJECT_BY_ID,
-  TOTAL_WEEKS,
-  WEEKS,
-  WEEKLY_APPS_MIN,
-  WEEKLY_DSA_MIN,
-  WEEKLY_TARGETS,
-  phaseForWeek,
-  type SubjectId,
-} from '../../data/plan';
-import { fromKey, toKey, weekDays, weekNumberFor } from '../../lib/dates';
+import { SUBJECT_BY_ID, WEEKLY_APPS_MIN, WEEKLY_DSA_MIN, WEEKLY_TARGETS, type SubjectId } from '../../data/plan';
+import { fromKey, toKey, weekDays, weekNumberFor, weekRangeLabel } from '../../lib/dates';
+import { getWeek, lastShownWeek } from '../../lib/planModel';
 import { copyText, useNow } from '../../lib/hooks';
 import { statsFor } from '../../lib/streak';
 import { emptyReview, useStore } from '../../state/store';
@@ -36,18 +27,20 @@ export function weekScore(state: TrackerState, n: number) {
   const keys = days.map(toKey);
   const sum = (f: 'dsa' | 'apps') => keys.reduce((s, k) => s + (state.days[k]?.[f] ?? 0), 0);
   const review = state.reviews[String(n)] ?? emptyReview();
-  const w = WEEKS[n - 1];
+  // Topics and target text come from the effective plan; weeks without custom targets use the standard five.
+  const w = getWeek(state.plan, n);
   const inWeek = (iso: string) => {
     const d = fromKey(iso);
     return differenceInCalendarDays(d, w.start) >= 0 && differenceInCalendarDays(d, w.end) <= 0;
   };
-  const csThisWeek = ALL_TOPICS.filter((t) => t.subject === 'cs' && state.topicsDone[t.id] && inWeek(state.topicsDone[t.id])).length;
+  const csThisWeek = Object.entries(state.topicsDone).filter(([id, on]) => id.endsWith('-cs') && inWeek(on)).length;
   const csMet = csThisWeek > 0 || !!state.topicsDone[w.topics.cs.id];
   const aptTopic = !!state.topicsDone[w.topics.apt.id];
   const dsa = sum('dsa');
   const apps = sum('apps');
 
-  const rows: Row[] = WEEKLY_TARGETS.map(({ subject, target }) => {
+  const rows: Row[] = WEEKLY_TARGETS.map(({ subject }) => {
+    const target = w.targets[subject];
     switch (subject) {
       case 'dsa':
         return { subject, target, actual: `${dsa} problems`, met: dsa >= WEEKLY_DSA_MIN };
@@ -64,7 +57,7 @@ export function weekScore(state: TrackerState, n: number) {
   const score = Math.round((rows.filter((r) => r.met).length / rows.length) * 100);
   const daysCounted = days.filter((d) => statsFor(state, d).counts).length;
   const hours = keys.reduce((s, k) => s + (state.days[k]?.hours ?? 0), 0);
-  return { rows, score, review, dsa, apps, daysCounted, hours };
+  return { rows, score, review, dsa, apps, daysCounted, hours, phase: w.phase };
 }
 
 export default function Review() {
@@ -72,10 +65,11 @@ export default function Review() {
   const toast = useToast();
   const now = useNow();
   const [week, setWeek] = useState(() => weekNumberFor(now));
-  const w = WEEKS[week - 1];
-  const { rows, score, review, daysCounted, hours } = weekScore(state, week);
+  const { rows, score, review, daysCounted, hours, phase } = weekScore(state, week);
+  // No cap: up to the current week and any later planned week.
+  const maxWeek = lastShownWeek(state.plan, now);
 
-  const started = (n: number) => differenceInCalendarDays(WEEKS[n - 1].start, now) <= 0;
+  const started = (n: number) => differenceInCalendarDays(getWeek(state.plan, n).start, now) <= 0;
   const prev = week > 1 ? weekScore(state, week - 1) : null;
   const rebalance = !!prev && started(week) && score < 70 && prev.score < 70;
 
@@ -83,7 +77,7 @@ export default function Review() {
 
   const copy = async () => {
     const lines = [
-      `Weekly review — Week ${week} of ${TOTAL_WEEKS} (${format(w.start, 'd MMM')}–${format(w.end, 'd MMM')}, Phase ${phaseForWeek(week).name})`,
+      `Weekly review — Week ${week} (${weekRangeLabel(week)}, Phase ${phase.name})`,
       `Score: ${score}% of targets met · ${daysCounted}/7 days counted · ${hours} hrs studied`,
       '',
       ...rows.map((r) => `${r.met ? '✓' : '✗'} ${SUBJECT_BY_ID[r.subject].name}: ${r.actual} (target: ${r.target})`),
@@ -113,10 +107,10 @@ export default function Review() {
                 Week {week}
               </p>
               <p className="text-[11px] text-gray-500">
-                {format(w.start, 'd MMM')} – {format(w.end, 'd MMM')}
+                {weekRangeLabel(week)}
               </p>
             </div>
-            <button type="button" className={navBtn} disabled={week >= TOTAL_WEEKS} onClick={() => setWeek((n) => n + 1)} aria-label="Next week">
+            <button type="button" className={navBtn} disabled={week >= maxWeek} onClick={() => setWeek((n) => n + 1)} aria-label="Next week">
               <ChevronRight className="w-4 h-4 text-primary" />
             </button>
           </div>
@@ -145,7 +139,7 @@ export default function Review() {
               <span className="italic font-serif text-primary/70"> · {score}%</span>
             </p>
             <p className="text-xs text-gray-500">
-              {daysCounted}/7 days counted · {hours} hrs studied · Phase {phaseForWeek(week).name}
+              {daysCounted}/7 days counted · {hours} hrs studied · Phase {phase.name}
             </p>
           </div>
         </div>

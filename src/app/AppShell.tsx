@@ -6,7 +6,7 @@ import { AppNavLinks, PillShell } from '../components/PillNav';
 import { useNow } from '../lib/hooks';
 import { longDate, planStatus, weekNumberFor } from '../lib/dates';
 import { currentStreak, statsFor } from '../lib/streak';
-import { phaseForWeek } from '../data/plan';
+import { lastPlannedWeek, phaseFor } from '../lib/planModel';
 import { useStore } from '../state/store';
 import { SettingsModal } from './SettingsModal';
 import { SyncPill } from './SyncPill';
@@ -16,7 +16,8 @@ function StatusStrip({ onSettings }: { onSettings: () => void }) {
   const now = useNow();
   const status = planStatus(now);
   const week = weekNumberFor(now);
-  const phase = phaseForWeek(week);
+  const phase = phaseFor(state.plan, week);
+  const planned = lastPlannedWeek(state.plan);
   const streak = currentStreak(state, now);
   const today = statsFor(state, now);
 
@@ -24,14 +25,8 @@ function StatusStrip({ onSettings }: { onSettings: () => void }) {
     <div className="bg-[#101010] rounded-2xl px-4 py-3 sm:px-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs sm:text-sm">
       <span style={{ color: '#E1E0CC' }}>{longDate(now)}</span>
       <span className="text-gray-400">
-        {status === 'after' ? (
-          'Plan complete'
-        ) : (
-          <>
-            Week {week} of 13 · Phase {phase.name}
-            {status === 'before' && <span className="text-amber-300/70"> · Starts Fri 2 Oct</span>}
-          </>
-        )}
+        {week <= planned ? `Week ${week} of ${planned} · Phase ${phase.name}` : `Week ${week} · ${phase.name}`}
+        {status === 'before' && <span className="text-amber-300/70"> · Starts Fri 2 Oct</span>}
       </span>
       <span className="inline-flex items-center gap-1.5 text-primary">
         <Flame className="w-4 h-4 text-amber-300" /> {streak} day{streak === 1 ? '' : 's'}

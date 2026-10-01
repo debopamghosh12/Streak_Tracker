@@ -1,4 +1,4 @@
-import type { CarriedItem, DayRecord, ReviewRecord, TrackerState } from '../../state/types';
+import type { CarriedItem, DayRecord, ReviewRecord, TrackerState, UserPhase, UserWeek } from '../../state/types';
 import { browserKV, readJSON, writeJSON } from './kv';
 import type { LocalStore } from './localStore';
 import { isNewer, maxUpdatedAt, mergePulled } from './merge';
@@ -121,6 +121,14 @@ export class SyncedStore implements TrackerStorage {
 
   saveSettings(settings: SyncedSettings) {
     this.queue({ table: 'settings', key: 'settings', settings }, this.local.saveSettings(settings));
+  }
+
+  savePlanWeek(week: UserWeek, deleted = false) {
+    this.queue({ table: 'plan_weeks', key: String(week.weekNumber), week, deleted }, this.local.savePlanWeek(week, deleted));
+  }
+
+  savePlanPhase(phase: UserPhase, deleted = false) {
+    this.queue({ table: 'plan_phases', key: phase.id, phase, deleted }, this.local.savePlanPhase(phase, deleted));
   }
 
   exportAll(): TrackerState {

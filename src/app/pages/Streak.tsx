@@ -1,14 +1,15 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { Flame, Snowflake } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { addDays, differenceInCalendarDays, format } from 'date-fns';
 import { PageTitle } from '../../components/PageTitle';
 import { Card, SectionLabel, useToast } from '../../components/ui';
 import { WordsPullUp } from '../../components/WordsPullUp';
-import { HOURS_TARGET, TOTAL_DAYS, WEEKS } from '../../data/plan';
-import { isSunday, toKey, weekDays, weekNumberFor } from '../../lib/dates';
+import { HOURS_TARGET } from '../../data/plan';
+import { isSunday, toKey, weekDays, weekNumberFor, weekStart } from '../../lib/dates';
+import { heatmapRange } from '../../lib/planModel';
 import { useNow } from '../../lib/hooks';
-import { canFreezeYesterday, currentStreak, daysCounted, freezeUsedInWeek, longestStreak, statsFor } from '../../lib/streak';
+import { canFreezeYesterday, currentStreak, daysCounted, daysSoFar, freezeUsedInWeek, longestStreak, statsFor } from '../../lib/streak';
 import { useStore } from '../../state/store';
 
 const TEXT = { color: '#E1E0CC' };
@@ -43,7 +44,18 @@ export default function Streak() {
   const freeze = canFreezeYesterday(state, now);
   const week = weekNumberFor(now);
   const freezeUsed = freezeUsedInWeek(state, weekNumberFor(yesterday));
-  const freezesUsedTotal = WEEKS.filter((w) => freezeUsedInWeek(state, w.n)).length;
+  const range = heatmapRange(state.plan, now);
+  const heatWeeks = Array.from({ length: range.weeks }, (_, i) => ({ n: i + 1, start: weekStart(i + 1) }));
+  const freezesUsedTotal = heatWeeks.filter((w) => w.n <= week && freezeUsedInWeek(state, w.n)).length;
+
+  // Keep the current week in view once the heatmap is wider than its card.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = scrollRef.current;
+    const cell = box?.querySelector<HTMLElement>('[data-current-week]');
+    if (!box || !cell) return;
+    box.scrollLeft = Math.max(0, cell.offsetLeft - box.clientWidth / 2 + cell.offsetWidth / 2);
+  }, [week, range.weeks]);
 
   const showTip = (date: Date, el: HTMLElement) => {
     const r = el.getBoundingClientRect();
@@ -68,24 +80,33 @@ export default function Streak() {
         <div className="flex flex-wrap gap-2 md:pb-3">
           <Stat label="Current" value={`${streak} day${streak === 1 ? '' : 's'}`} />
           <Stat label="Longest" value={`${longest} day${longest === 1 ? '' : 's'}`} />
-          <Stat label="Days counted" value={`${counted} / ${TOTAL_DAYS}`} />
+          <Stat label="Days counted" value={`${counted} / ${daysSoFar(now)}`} />
         </div>
       </Card>
 
       {/* Heatmap */}
       <Card className="mb-4">
-        <SectionLabel right={<Legend />}>2 Oct – 31 Dec 2026</SectionLabel>
-        <div className="overflow-x-auto scrollbar-thin -mx-1 px-1 pb-2" onScroll={() => setTip(null)}>
-          <div className="grid gap-1.5 w-full min-w-[480px]" style={{ gridTemplateColumns: `32px repeat(13, minmax(30px, 1fr))` }}>
+        <SectionLabel right={<Legend />}>
+          {format(range.from, 'd MMM yyyy')} – {format(range.to, 'd MMM yyyy')}
+        </SectionLabel>
+        <div ref={scrollRef} className="overflow-x-auto scrollbar-thin -mx-1 px-1 pb-2" onScroll={() => setTip(null)}>
+          <div
+            className="grid gap-1.5 w-full"
+            style={{ gridTemplateColumns: `32px repeat(${range.weeks}, minmax(30px, 1fr))`, minWidth: 32 + range.weeks * 36 }}
+          >
             <span />
-            {WEEKS.map((w) => (
-              <span key={w.n} className={`text-[10px] text-center ${w.n === week ? 'text-primary' : 'text-gray-500'}`}>
+            {heatWeeks.map((w) => (
+              <span
+                key={w.n}
+                data-current-week={w.n === week ? '' : undefined}
+                className={`text-[10px] text-center ${w.n === week ? 'text-primary' : 'text-gray-500'}`}
+              >
                 W{w.n}
               </span>
             ))}
             {ROWS.map((label, r) => (
               <Row key={label} label={label}>
-                {WEEKS.map((w) => {
+                {heatWeeks.map((w) => {
                   const offset = (DOW[r] - 5 + 7) % 7;
                   const date = addDays(w.start, offset);
                   const future = differenceInCalendarDays(date, now) > 0;
@@ -115,7 +136,7 @@ export default function Streak() {
             ))}
           </div>
         </div>
-        <p className="text-[11px] text-gray-500 mt-2">Columns are plan weeks (Fri–Thu). Tap a day for details.</p>
+        <p className="text-[11px] text-gray-500 mt-2">Columns are plan weeks (Fri–Thu), from week 1 on. Tap a day for details.</p>
       </Card>
 
       <AnimatePresence>

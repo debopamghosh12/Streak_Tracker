@@ -1,4 +1,4 @@
-import type { CarriedItem, DayRecord, ReviewRecord, TrackerState } from '../../state/types';
+import type { CarriedItem, DayRecord, ReviewRecord, TrackerState, UserPhase, UserWeek } from '../../state/types';
 
 /** Synced per-user settings (one row per user). */
 export interface SyncedSettings {
@@ -23,14 +23,18 @@ export interface TrackerStorage {
   saveTopicDone(topicId: string, date: string | null): void;
   saveReview(week: string, review: ReviewRecord): void;
   saveSettings(settings: SyncedSettings): void;
+  /** User week (deleted = soft delete, synced so other devices remove it too). */
+  savePlanWeek(week: UserWeek, deleted?: boolean): void;
+  savePlanPhase(phase: UserPhase, deleted?: boolean): void;
   /** Full backup (the JSON the "Export" button downloads). */
   exportAll(): TrackerState;
   /** Replace everything with a backup / reset state. Returns the normalised state. */
   importAll(data: unknown): TrackerState;
 }
 
-export type TableName = 'days' | 'carried_items' | 'topics_done' | 'reviews' | 'settings';
-export const TABLES: TableName[] = ['days', 'carried_items', 'topics_done', 'reviews', 'settings'];
+export type TableName = 'days' | 'carried_items' | 'topics_done' | 'reviews' | 'settings' | 'plan_phases' | 'plan_weeks';
+/** Push/pull order. Plan tables go last so core data still syncs if 002_plan_extension.sql hasn't been run yet. */
+export const TABLES: TableName[] = ['days', 'carried_items', 'topics_done', 'reviews', 'settings', 'plan_phases', 'plan_weeks'];
 
 /** One synced row, in app terms. Backends map it to their own schema. */
 export type SyncRecord =
@@ -38,7 +42,9 @@ export type SyncRecord =
   | { table: 'carried_items'; key: string; item: CarriedItem; dropped: boolean }
   | { table: 'topics_done'; key: string; doneOn: string | null }
   | { table: 'reviews'; key: string; review: ReviewRecord }
-  | { table: 'settings'; key: 'settings'; settings: SyncedSettings };
+  | { table: 'settings'; key: 'settings'; settings: SyncedSettings }
+  | { table: 'plan_phases'; key: string; phase: UserPhase; deleted: boolean }
+  | { table: 'plan_weeks'; key: string; week: UserWeek; deleted: boolean };
 
 /** A row as stored on the server, with the server's updated_at. */
 export type PulledRecord = SyncRecord & { updatedAt: string };

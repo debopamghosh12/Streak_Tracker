@@ -1,7 +1,7 @@
 import type { CarriedItem, TrackerState } from '../../state/types';
 import type { TrackerStorage } from './types';
 
-type Sink = Pick<TrackerStorage, 'saveDay' | 'saveCarried' | 'saveTopicDone' | 'saveReview' | 'saveSettings'>;
+type Sink = Pick<TrackerStorage, 'saveDay' | 'saveCarried' | 'saveTopicDone' | 'saveReview' | 'saveSettings' | 'savePlanWeek' | 'savePlanPhase'>;
 
 /** A carried item known only by its id (v1 tombstones): enough to sync a soft delete. */
 export function tombstoneItem(id: string): CarriedItem {
@@ -40,6 +40,21 @@ export function persistDiff(prev: TrackerState, next: TrackerState, sink: Sink) 
 
   if (prev.reviews !== next.reviews) {
     for (const [week, r] of Object.entries(next.reviews)) if (prev.reviews[week] !== r) sink.saveReview(week, r);
+  }
+
+  if (prev.plan !== next.plan) {
+    const pw = prev.plan.weeks;
+    const nw = next.plan.weeks;
+    if (pw !== nw) {
+      for (const [k, w] of Object.entries(nw)) if (pw[k] !== w) sink.savePlanWeek(w);
+      for (const [k, w] of Object.entries(pw)) if (!(k in nw)) sink.savePlanWeek(w, true);
+    }
+    const pp = prev.plan.phases;
+    const np = next.plan.phases;
+    if (pp !== np) {
+      for (const [k, p] of Object.entries(np)) if (pp[k] !== p) sink.savePlanPhase(p);
+      for (const [k, p] of Object.entries(pp)) if (!(k in np)) sink.savePlanPhase(p, true);
+    }
   }
 
   if (prev.rolledThrough !== next.rolledThrough) {

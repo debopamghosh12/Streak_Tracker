@@ -5,7 +5,7 @@ Persist shows what's planned for today, tracks what got done, carries unfinished
 and keeps the streak honest. It runs offline in the browser and can optionally sync between
 laptop and phone through Supabase.
 
-> Plan window: **Fri 2 Oct – Thu 31 Dec 2026** · 13 weeks · 3 phases
+> Starts **Fri 2 Oct 2026** with a 13-week base plan in 3 phases, then keeps going: add your own weeks and phases.
 > Subjects: DSA · Java + Spring Boot · CS Fundamentals · AI · Aptitude + Applications
 
 ---
@@ -23,13 +23,19 @@ A dark landing page in a warm cream palette, with three sections:
 | Page | What it does |
 | --- | --- |
 | **Today** `/app` | Hour-by-hour timetable (Mon–Sat) or the Sunday checkpoint, a **Now** highlight, round checkboxes, daily counters (DSA problems, applications, hours), topic tags with autocomplete, morning plan and night check-in with **Copy for Claude**, and a live "counts for streak" verdict. |
-| **Syllabus** `/app/syllabus` | Per-subject progress with *Ahead / On track / Behind* badges, overall progress with phase markers, a DSA problem count against phase goals, collapsible phases → weeks → topics, filters, and a "show only pending" toggle. |
-| **Streak** `/app/streak` | Current and longest streak, days counted out of 91, a GitHub-style heatmap (13 plan weeks × 7 days), one freeze per week, and an hours-per-day chart against a 10-hour target. |
+| **Syllabus** `/app/syllabus` | Per-subject progress with *Ahead / On track / Behind* badges, overall progress with phase markers, a DSA problem count against phase goals, collapsible phases → weeks → topics, filters, a "show only pending" toggle, and a **plan editor**: add a week or 4, create phases, edit any week's topics. |
+| **Streak** `/app/streak` | Current and longest streak, days counted out of days elapsed, a GitHub-style heatmap (plan weeks × 7 days, as many weeks as you've reached or planned), one freeze per week, and an hours-per-day chart against a 10-hour target. |
 | **Review** `/app/review` | Weekly targets vs actuals, score, a warning after two weeks in a row under 70%, reflection notes, and **Copy weekly review for Claude**. |
 
 **Edit the day.** Each task row has a pencil button. You can change the text, time, or subject for
 that date only (optionally for the rest of the week), reset it to the plan, add your own tasks,
 or delete a planned block: either *move it to tomorrow* or *skip it today* (max 3 skips a day).
+
+**Open-ended plan.** The built-in 13 weeks (2 Oct – 31 Dec 2026) are the base. After that the
+timetable, streak, carry-forward and reviews just keep running: week 14, 15, … Weeks without
+topics show placeholders ("Set this week's DSA topic") until you fill them in on the Syllabus
+page; they belong to *Phase 4 — Keep going* until you create your own phase. Editing a base
+week saves your own version of it — checked topics stay checked.
 
 **Automatic carry-forward.** At midnight local time, unfinished tasks move to the next day. Each
 keeps its original date ("from Wed 7 Oct") and a move count. After 3 moves it's marked amber, with
@@ -85,8 +91,8 @@ VITE_SUPABASE_URL=https://<your-ref>.supabase.co
 VITE_SUPABASE_ANON_KEY=<anon or publishable key>
 ```
 
-Then run [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql) in the Supabase
-SQL Editor, set up the auth redirect URLs, and restart `npm run dev`. See **[SETUP.md](SETUP.md)**
+Then run [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql) and
+[`002_plan_extension.sql`](supabase/migrations/002_plan_extension.sql) in the Supabase SQL Editor, set up the auth redirect URLs, and restart `npm run dev`. See **[SETUP.md](SETUP.md)**
 for the full walkthrough.
 
 > Only use the public **anon/publishable** key. Never put the `service_role` key in `.env` or in the frontend.
@@ -109,7 +115,7 @@ for the full walkthrough.
 
 ```
 src/
-├── data/plan.ts            # The plan: dates, phases, 13 weeks of topics, timetable, Sunday tasks, targets
+├── data/plan.ts            # The base plan: start date, 3 phases, 13 weeks of topics, timetable, Sunday tasks, targets
 ├── landing/                # Hero, About, Features
 ├── app/
 │   ├── AppShell.tsx        # Navbar, status strip, route fade
@@ -122,7 +128,8 @@ src/
 │   ├── store.tsx           # Provider: external store + persistence + sync hooks
 │   └── types.ts
 └── lib/
-    ├── dates.ts            # Plan weeks (Fri–Thu), day keys
+    ├── dates.ts            # Plan weeks (Fri–Thu, no upper limit), day keys
+    ├── planModel.ts        # Effective plan = base weeks + your weeks/phases
     ├── tasks.ts            # A day's effective tasks (overrides, skips, custom) + carry helpers
     ├── streak.ts           # Day verdict, current/longest streak, freezes
     ├── supabase.ts         # Supabase client (null when env vars are missing)
@@ -131,7 +138,8 @@ src/
         ├── syncedStore.ts  #   outbox, pull/merge, first sign-in migration, status
         ├── supabaseStore.ts#   Supabase implementation of RemoteBackend
         ├── outbox.ts, merge.ts, diff.ts, kv.ts, types.ts, index.ts
-supabase/migrations/001_init.sql   # Tables, triggers, indexes, RLS policies
+supabase/migrations/001_init.sql            # Tables, triggers, indexes, RLS policies
+supabase/migrations/002_plan_extension.sql  # plan_phases + plan_weeks
 ```
 
 ---
@@ -158,7 +166,7 @@ The keys keep the app's original name (*Prisma*) on purpose: renaming them would
 
 | Key | Contents |
 | --- | --- |
-| `prisma-tracker-v2` | App state (days, carried items, topics, reviews) |
+| `prisma-tracker-v2` | App state (days, carried items, topics, reviews, your plan weeks/phases) |
 | `prisma-meta-v2` | Per-record client `updatedAt` |
 | `prisma-outbox-v1` | Pending uploads |
 | `prisma-sync-v1` | Signed-in user id + last pull cursors |
@@ -177,12 +185,14 @@ npm test
 ```
 
 The suite covers:
+- week numbering past 31 Dec 2026, user weeks overriding base weeks, placeholders, phases
+- heatmap range and "days counted" past week 13, rollover across the new year
 - streak rules and edits (skips, custom tasks, Sunday scaling)
 - carry-forward and rollover idempotency
 - v1 → v2 migration and backup round-trips
 - the merge rule (newer wins; offline edits survive)
 - outbox batching, coalescing, persistence and backoff retries
-- multi-device rollover without duplicates, and soft deletes
+- multi-device rollover without duplicates, soft deletes, and plan_weeks / plan_phases sync
 - first sign-in migration (empty server / both sides have data)
 - Supabase row mapping against a mocked client
 

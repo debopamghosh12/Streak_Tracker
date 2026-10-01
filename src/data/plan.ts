@@ -1,9 +1,9 @@
 import { addDays } from 'date-fns';
 
+/** Week 1 starts here; week n starts on PLAN_START + 7·(n−1). The plan has no end date. */
 export const PLAN_START = new Date(2026, 9, 2); // Fri 2 Oct 2026
-export const PLAN_END = new Date(2026, 11, 31); // Thu 31 Dec 2026
-export const TOTAL_WEEKS = 13;
-export const TOTAL_DAYS = 91;
+/** Number of weeks in the built-in base plan (2 Oct – 31 Dec 2026). User weeks extend it. */
+export const BASE_WEEKS = 13;
 
 export type SubjectId = 'dsa' | 'java' | 'cs' | 'ai' | 'apt';
 
@@ -24,22 +24,21 @@ export const SUBJECTS: Subject[] = [
 
 export const SUBJECT_BY_ID = Object.fromEntries(SUBJECTS.map((s) => [s.id, s])) as Record<SubjectId, Subject>;
 
-export interface Phase {
-  id: number;
+export interface BasePhase {
+  id: string;
   name: string;
-  weeks: number[];
-  range: string;
+  startWeek: number;
+  endWeek: number | null;
 }
 
-export const PHASES: Phase[] = [
-  { id: 1, name: 'Foundations', weeks: [1, 2, 3, 4], range: '2–29 Oct' },
-  { id: 2, name: 'Depth and projects', weeks: [5, 6, 7, 8, 9], range: '30 Oct–3 Dec' },
-  { id: 3, name: 'Interview mode', weeks: [10, 11, 12, 13], range: '4–31 Dec' },
+export const BASE_PHASES: BasePhase[] = [
+  { id: 'base-1', name: 'Foundations', startWeek: 1, endWeek: 4 },
+  { id: 'base-2', name: 'Depth and projects', startWeek: 5, endWeek: 9 },
+  { id: 'base-3', name: 'Interview mode', startWeek: 10, endWeek: 13 },
 ];
 
-export function phaseForWeek(week: number): Phase {
-  return PHASES.find((p) => p.weeks.includes(week)) ?? PHASES[0];
-}
+/** Phase for weeks no other phase covers (after the base plan, until you create another). */
+export const DEFAULT_PHASE: BasePhase = { id: 'keep-going', name: 'Keep going', startWeek: BASE_WEEKS + 1, endWeek: null };
 
 export interface Topic {
   id: string;
@@ -158,7 +157,14 @@ export const WEEKS: Week[] = RAW_WEEKS.map((raw, i) => {
   return { n, start, end: addDays(start, 6), topics };
 });
 
-export const ALL_TOPICS: Topic[] = WEEKS.flatMap((w) => SUBJECTS.map((s) => w.topics[s.id]));
+/** Topic ids are stable per (week, subject), for base and user weeks alike. */
+export const topicId = (week: number, subject: SubjectId) => `w${week}-${subject}`;
+
+/** Topic text per subject; null = not set. */
+export type TopicTexts = Record<SubjectId, string | null>;
+
+const PLACEHOLDER_NAME: Record<SubjectId, string> = { dsa: 'DSA', java: 'Java', cs: 'CS', ai: 'AI', apt: 'aptitude' };
+export const placeholderTask = (s: SubjectId) => `Set this week's ${PLACEHOLDER_NAME[s]} topic`;
 
 /* ---------- Timetable ---------- */
 
@@ -171,7 +177,8 @@ export interface TimeBlock {
   end: string;
   name: string;
   subject: SubjectId | null;
-  task: (w: Week) => string;
+  /** Today's task text from this week's topics (placeholder when the topic isn't set). */
+  task: (t: TopicTexts) => string;
   /** Subject blocks are carried forward when missed; plan/recall are not. */
   carry: boolean;
 }
@@ -187,15 +194,15 @@ export type TimetableRow = TimeBlock | BreakRow;
 
 export const TIMETABLE: TimetableRow[] = [
   { kind: 'block', id: 'plan', start: '08:45', end: '09:00', name: 'Plan', subject: null, carry: false, task: () => "Send today's targets to Claude" },
-  { kind: 'block', id: 'apt', start: '09:00', end: '09:45', name: 'Aptitude', subject: 'apt', carry: true, task: (w) => `${w.topics.apt.title}: learn, then 20 timed questions` },
+  { kind: 'block', id: 'apt', start: '09:00', end: '09:45', name: 'Aptitude', subject: 'apt', carry: true, task: (t) => (t.apt ? `${t.apt}: learn, then 20 timed questions` : placeholderTask('apt')) },
   { kind: 'block', id: 'apps', start: '09:45', end: '10:00', name: 'Applications', subject: 'apt', carry: true, task: () => 'Check job tracker, alerts, apply' },
-  { kind: 'block', id: 'cs', start: '10:00', end: '11:30', name: 'CS fundamentals', subject: 'cs', carry: true, task: (w) => `${w.topics.cs.title}: watch, then 1-page keyword skeleton` },
+  { kind: 'block', id: 'cs', start: '10:00', end: '11:30', name: 'CS fundamentals', subject: 'cs', carry: true, task: (t) => (t.cs ? `${t.cs}: watch, then 1-page keyword skeleton` : placeholderTask('cs')) },
   { kind: 'break', id: 'b1', start: '11:30', end: '11:45' },
-  { kind: 'block', id: 'java', start: '11:45', end: '14:15', name: 'Java + Spring Boot', subject: 'java', carry: true, task: (w) => `${w.topics.java.title}: video section, then build into BlockEvidence` },
+  { kind: 'block', id: 'java', start: '11:45', end: '14:15', name: 'Java + Spring Boot', subject: 'java', carry: true, task: (t) => (t.java ? `${t.java}: video section, then build into BlockEvidence` : placeholderTask('java')) },
   { kind: 'break', id: 'b2', start: '14:15', end: '15:30' },
-  { kind: 'block', id: 'ai', start: '15:30', end: '17:00', name: 'AI', subject: 'ai', carry: true, task: (w) => `${w.topics.ai.title}: concept + hands-on build` },
+  { kind: 'block', id: 'ai', start: '15:30', end: '17:00', name: 'AI', subject: 'ai', carry: true, task: (t) => (t.ai ? `${t.ai}: concept + hands-on build` : placeholderTask('ai')) },
   { kind: 'break', id: 'b3', start: '17:00', end: '17:30' },
-  { kind: 'block', id: 'dsa1', start: '17:30', end: '19:30', name: 'DSA block 1', subject: 'dsa', carry: true, task: (w) => `${w.topics.dsa.title}: learn + solve 2–3 problems` },
+  { kind: 'block', id: 'dsa1', start: '17:30', end: '19:30', name: 'DSA block 1', subject: 'dsa', carry: true, task: (t) => (t.dsa ? `${t.dsa}: learn + solve 2–3 problems` : placeholderTask('dsa')) },
   { kind: 'break', id: 'b4', start: '19:30', end: '20:15' },
   { kind: 'block', id: 'dsa2', start: '20:15', end: '21:45', name: 'DSA block 2', subject: 'dsa', carry: true, task: () => '2 more problems unaided + 1 revision problem' },
   { kind: 'block', id: 'recall', start: '21:45', end: '22:00', name: 'Recall', subject: null, carry: false, task: () => "Explain today's topics out loud, then night check-in" },
@@ -233,6 +240,7 @@ export const DAILY_COUNTERS: { field: CounterField; label: string; target: strin
 
 export const HOURS_TARGET = 10;
 
+/** DSA problem goals for the base phases. User phases can set their own (UserPhase.dsaGoal). */
 export const DSA_GOALS = [
   { by: new Date(2026, 9, 29), label: '29 Oct', count: 110 },
   { by: new Date(2026, 11, 3), label: '3 Dec', count: 250 },

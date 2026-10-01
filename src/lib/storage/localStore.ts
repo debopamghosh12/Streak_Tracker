@@ -1,5 +1,5 @@
 import { initialState, sanitize, todayKey } from '../../state/reducer';
-import type { CarriedItem, DayRecord, ReviewRecord, TrackerState } from '../../state/types';
+import type { CarriedItem, DayRecord, ReviewRecord, TrackerState, UserPhase, UserWeek } from '../../state/types';
 import { tombstoneItem } from './diff';
 import { browserKV, readJSON, writeJSON } from './kv';
 import type { CarriedStatus, KV, SyncRecord, SyncedSettings, TableName, TrackerStorage } from './types';
@@ -12,7 +12,7 @@ export const META_KEY = 'prisma-meta-v2';
 
 /** Client-side updatedAt (ISO) for every local record, per table. Missing = older than any server row. */
 export type Meta = Record<TableName, Record<string, string>>;
-const emptyMeta = (): Meta => ({ days: {}, carried_items: {}, topics_done: {}, reviews: {}, settings: {} });
+const emptyMeta = (): Meta => ({ days: {}, carried_items: {}, topics_done: {}, reviews: {}, settings: {}, plan_phases: {}, plan_weeks: {} });
 
 export const nowIso = () => new Date().toISOString();
 
@@ -96,6 +96,23 @@ export class LocalStore implements TrackerStorage {
     return this.stamp('settings', 'settings', at);
   }
 
+  savePlanWeek(week: UserWeek, deleted = false, at = nowIso()): string {
+    const key = String(week.weekNumber);
+    const weeks = { ...this.state.plan.weeks };
+    if (deleted) delete weeks[key];
+    else weeks[key] = week;
+    this.state = { ...this.state, plan: { ...this.state.plan, weeks } };
+    return this.stamp('plan_weeks', key, at);
+  }
+
+  savePlanPhase(phase: UserPhase, deleted = false, at = nowIso()): string {
+    const phases = { ...this.state.plan.phases };
+    if (deleted) delete phases[phase.id];
+    else phases[phase.id] = phase;
+    this.state = { ...this.state, plan: { ...this.state.plan, phases } };
+    return this.stamp('plan_phases', phase.id, at);
+  }
+
   exportAll(): TrackerState {
     return this.state;
   }
@@ -125,6 +142,10 @@ export class LocalStore implements TrackerStorage {
         return this.saveReview(r.key, r.review, at);
       case 'settings':
         return this.saveSettings(r.settings, at);
+      case 'plan_phases':
+        return this.savePlanPhase(r.phase, r.deleted, at);
+      case 'plan_weeks':
+        return this.savePlanWeek(r.week, r.deleted, at);
     }
   }
 
@@ -141,12 +162,21 @@ export class LocalStore implements TrackerStorage {
     for (const [key, doneOn] of Object.entries(s.topicsDone)) out.push({ table: 'topics_done', key, doneOn });
     for (const [key, review] of Object.entries(s.reviews)) out.push({ table: 'reviews', key, review });
     out.push({ table: 'settings', key: 'settings', settings: { version: 2, rolledThrough: s.rolledThrough } });
+    for (const phase of Object.values(s.plan.phases)) out.push({ table: 'plan_phases', key: phase.id, phase, deleted: false });
+    for (const week of Object.values(s.plan.weeks)) out.push({ table: 'plan_weeks', key: String(week.weekNumber), week, deleted: false });
     return out;
   }
 
   hasUserData(): boolean {
     const s = this.state;
-    return Object.keys(s.days).length > 0 || s.carried.length > 0 || Object.keys(s.topicsDone).length > 0 || Object.keys(s.reviews).length > 0;
+    return (
+      Object.keys(s.days).length > 0 ||
+      s.carried.length > 0 ||
+      Object.keys(s.topicsDone).length > 0 ||
+      Object.keys(s.reviews).length > 0 ||
+      Object.keys(s.plan.weeks).length > 0 ||
+      Object.keys(s.plan.phases).length > 0
+    );
   }
 
   private stamp(table: TableName, key: string, at: string): string {

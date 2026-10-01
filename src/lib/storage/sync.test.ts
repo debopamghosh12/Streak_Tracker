@@ -265,3 +265,47 @@ describe('storage layer', () => {
     expect(local.load().days).toEqual({});
   });
 });
+
+describe('plan sync', () => {
+  it('plan_weeks and plan_phases sync between devices, newer wins, deletes are soft', async () => {
+    const server = new FakeServer();
+    const a = device(server, DAY);
+    const b = device(server, DAY);
+    await a.start();
+    await b.start();
+
+    at(1);
+    a.dispatch({ type: 'upsertPlanPhase', phase: { id: 'p1', name: 'Offers', startWeek: 14, endWeek: null } });
+    a.dispatch({ type: 'upsertPlanWeek', week: { weekNumber: 14, phaseId: 'p1', topics: { dsa: 'Graphs', java: null, cs: null, ai: null, apt: null } } });
+    await a.store.flushNow();
+    await b.store.pullNow();
+    expect(b.state.plan.weeks['14'].topics.dsa).toBe('Graphs');
+    expect(b.state.plan.phases.p1.name).toBe('Offers');
+
+    at(5);
+    b.dispatch({ type: 'upsertPlanWeek', week: { ...b.state.plan.weeks['14'], topics: { ...b.state.plan.weeks['14'].topics, dsa: 'Graphs II' } } });
+    await b.store.flushNow();
+    await a.store.pullNow();
+    expect(a.state.plan.weeks['14'].topics.dsa).toBe('Graphs II');
+
+    at(9);
+    a.dispatch({ type: 'deletePlanWeek', weekNumber: 14 });
+    await a.store.flushNow();
+    const row = server.get('plan_weeks', '14')!;
+    expect(row.table === 'plan_weeks' && row.deleted).toBe(true);
+    expect(server.count('plan_weeks')).toBe(1); // soft delete keeps the row
+    await b.store.pullNow();
+    expect(b.state.plan.weeks['14']).toBeUndefined();
+  });
+
+  it('first sign-in uploads local plan weeks', async () => {
+    const server = new FakeServer();
+    const a = device(server, DAY, { signedIn: false });
+    await a.start();
+    a.dispatch({ type: 'upsertPlanWeek', week: { weekNumber: 15, phaseId: null, topics: { dsa: 'DP', java: null, cs: null, ai: null, apt: null } } });
+    await a.backend.signIn();
+    await a.store.settled();
+    expect(server.count('plan_weeks')).toBe(1);
+    expect(a.notices).toContain('Your local data is now synced');
+  });
+});

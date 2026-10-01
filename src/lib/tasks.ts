@@ -1,7 +1,8 @@
 import { addDays, differenceInCalendarDays } from 'date-fns';
-import { BLOCKS, PLAN_START, SUNDAY_TASKS, TOTAL_DAYS } from '../data/plan';
-import type { CarriedItem, DayRecord, Override, TaskSubject } from '../state/types';
-import { fromKey, isSunday, toKey, weekFor } from './dates';
+import { BLOCKS, PLAN_START, SUNDAY_TASKS } from '../data/plan';
+import type { CarriedItem, DayRecord, Override, TaskSubject, UserPlan } from '../state/types';
+import { fromKey, isSunday, toKey, weekNumberFor } from './dates';
+import { EMPTY_PLAN, weekTexts } from './planModel';
 
 export type TaskKind = 'block' | 'sunday' | 'custom';
 
@@ -31,7 +32,8 @@ export interface DayTasks {
   movedOut: Set<string>;
 }
 
-export function getDayTasks(day: DayRecord | undefined, date: Date): DayTasks {
+/** A day's tasks. `plan` only affects task text (this week's topics); streak math never depends on it. */
+export function getDayTasks(day: DayRecord | undefined, date: Date, plan: UserPlan = EMPTY_PLAN): DayTasks {
   const overrides = day?.overrides ?? {};
   const skipped = day?.skipped ?? {};
   const planned: DayTask[] = [];
@@ -55,10 +57,10 @@ export function getDayTasks(day: DayRecord | undefined, date: Date): DayTasks {
       });
     }
   } else {
-    const week = weekFor(date);
+    const texts = weekTexts(plan, weekNumberFor(date));
     for (const b of BLOCKS) {
       const o = overrides[b.id];
-      const base: Override = { text: b.task(week), start: b.start, end: b.end, subject: b.subject };
+      const base: Override = { text: b.task(texts), start: b.start, end: b.end, subject: b.subject };
       planned.push({
         id: b.id,
         kind: 'block',
@@ -115,8 +117,8 @@ export function makeCarried(date: string, t: DayTask, currentDate: string): Carr
 }
 
 /** Unfinished tasks of a day that should roll forward. */
-export function unfinishedTasks(day: DayRecord | undefined, date: Date): DayTask[] {
-  const { active } = getDayTasks(day, date);
+export function unfinishedTasks(day: DayRecord | undefined, date: Date, plan: UserPlan = EMPTY_PLAN): DayTask[] {
+  const { active } = getDayTasks(day, date, plan);
   return active.filter((t) => !t.done && t.carry);
 }
 
@@ -126,10 +128,9 @@ export function unfinishedTasks(day: DayRecord | undefined, date: Date): DayTask
  */
 export function datesToRoll(dayKeys: string[], after: string, today: string): string[] {
   const set = new Set<string>();
-  for (let i = 0; i < TOTAL_DAYS; i++) {
-    const k = toKey(addDays(PLAN_START, i));
-    if (k > after && k < today) set.add(k);
-  }
+  const startKey = toKey(PLAN_START);
+  let d = after >= startKey ? addDays(fromKey(after), 1) : PLAN_START;
+  for (let k = toKey(d); k < today; d = addDays(d, 1), k = toKey(d)) set.add(k);
   for (const k of dayKeys) if (k > after && k < today) set.add(k);
   return [...set].sort();
 }

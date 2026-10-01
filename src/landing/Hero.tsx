@@ -7,7 +7,7 @@ import { useStore } from '../state/store';
 import { useNow } from '../lib/hooks';
 import { currentStreak } from '../lib/streak';
 import { weekNumberFor } from '../lib/dates';
-import { ALL_TOPICS } from '../data/plan';
+import { plannedSyllabusPercent } from '../lib/planModel';
 
 const HERO_VIDEO =
   'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260405_170732_8a9ccda6-5cff-4628-b164-059c500a2b41.mp4';
@@ -19,7 +19,7 @@ export function Hero() {
   const now = useNow();
   const streak = currentStreak(state, now);
   const week = weekNumberFor(now);
-  const syllabusPct = Math.round((Object.keys(state.topicsDone).length / ALL_TOPICS.length) * 100);
+  const syllabusPct = plannedSyllabusPercent(state.plan, state.topicsDone);
 
   const scrollToAbout = () => document.getElementById('about')?.scrollIntoView({ behavior: 'smooth' });
 
@@ -68,7 +68,7 @@ export function Hero() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5, duration: 0.8, ease }}
               >
-                Persist is my daily system for placement season — thirteen weeks, five subjects, one streak. Show up, tick it
+                Persist is my daily system for placement season — five subjects, one streak, week after week. Show up, tick it
                 off, and let the plan carry the rest.
               </motion.p>
               <motion.p
@@ -77,7 +77,7 @@ export function Hero() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.6, duration: 0.8, ease }}
               >
-                🔥 {streak}-day streak · Week {week} of 13 · {syllabusPct}% syllabus
+                🔥 {streak}-day streak · Week {week} · {syllabusPct}% of planned syllabus
               </motion.p>
               <motion.div
                 initial={{ opacity: 0, y: 20 }}

@@ -1,7 +1,7 @@
 import { addDays, differenceInCalendarDays } from 'date-fns';
 import { PLAN_START, STREAK_THRESHOLD, SUNDAY_MIN_TASKS, SUNDAY_TASKS } from '../data/plan';
 import type { DayRecord, TrackerState } from '../state/types';
-import { PLAN_DAYS, isSunday, toKey, weekDays, weekNumberFor } from './dates';
+import { daysElapsed, isSunday, planDaysThrough, toKey, weekDays, weekNumberFor } from './dates';
 import { getDayTasks } from './tasks';
 
 export interface DayStats {
@@ -60,8 +60,7 @@ export function currentStreak(state: TrackerState, today: Date): number {
 export function longestStreak(state: TrackerState, today: Date): number {
   let best = 0;
   let run = 0;
-  for (const d of PLAN_DAYS) {
-    if (differenceInCalendarDays(d, today) > 0) break;
+  for (const d of planDaysThrough(today)) {
     if (statsFor(state, d).counts) {
       run++;
       best = Math.max(best, run);
@@ -74,9 +73,13 @@ export function longestStreak(state: TrackerState, today: Date): number {
   return Math.max(best, currentStreak(state, today));
 }
 
+/** Days that counted, from the plan start through today (any length of plan). */
 export function daysCounted(state: TrackerState, today: Date): number {
-  return PLAN_DAYS.filter((d) => differenceInCalendarDays(d, today) <= 0 && statsFor(state, d).counts).length;
+  return planDaysThrough(today).filter((d) => statsFor(state, d).counts).length;
 }
+
+/** Denominator for "Days counted: n / m" — days elapsed so far. */
+export const daysSoFar = (today: Date) => daysElapsed(today);
 
 /** Freeze for a given plan week is used if any day in that week is frozen. */
 export function freezeUsedInWeek(state: TrackerState, week: number): boolean {

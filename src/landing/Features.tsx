@@ -22,14 +22,14 @@ const FEATURES = [
     n: '02',
     title: 'Streak that counts.',
     icon: icon('hf_20260405_171741_ed9845ab-f5b2-4018-8ce7-07cc01823522.png'),
-    items: ['A day counts at 70% of blocks', 'Heatmap from Oct to Dec', 'One freeze per week'],
+    items: ['A day counts at 70% of blocks', 'Heatmap from day one', 'One freeze per week'],
     to: '/app/streak',
   },
   {
     n: '03',
     title: 'Syllabus in view.',
     icon: icon('hf_20260405_171809_f56666dc-c099-4778-ad82-9ad4f209567b.png'),
-    items: ['Every topic across 13 weeks', 'Ahead or behind, at a glance', 'Weekly targets and review'],
+    items: ['Every topic, week by week', 'Ahead or behind, at a glance', 'Weekly targets and review'],
     to: '/app/syllabus',
   },
 ];

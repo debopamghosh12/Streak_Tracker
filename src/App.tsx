@@ -12,8 +12,8 @@ import { ToastProvider } from './components/ui';
 export default function App() {
   return (
     <MotionConfig reducedMotion="user">
-      <StoreProvider>
-        <ToastProvider>
+      <ToastProvider>
+        <StoreProvider>
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/app" element={<AppShell />}>
@@ -24,8 +24,8 @@ export default function App() {
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </ToastProvider>
-      </StoreProvider>
+        </StoreProvider>
+      </ToastProvider>
     </MotionConfig>
   );
 }

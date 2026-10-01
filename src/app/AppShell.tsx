@@ -9,6 +9,7 @@ import { currentStreak, statsFor } from '../lib/streak';
 import { phaseForWeek } from '../data/plan';
 import { useStore } from '../state/store';
 import { SettingsModal } from './SettingsModal';
+import { SyncPill } from './SyncPill';
 
 function StatusStrip({ onSettings }: { onSettings: () => void }) {
   const { state } = useStore();
@@ -46,6 +47,7 @@ function StatusStrip({ onSettings }: { onSettings: () => void }) {
         </div>
         <span className="text-gray-400 tabular-nums w-9 text-right">{today.pct}%</span>
       </div>
+      <SyncPill onOpenSettings={onSettings} />
       <button
         type="button"
         onClick={onSettings}

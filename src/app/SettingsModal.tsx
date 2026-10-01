@@ -1,12 +1,14 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Download, Upload, Trash2, X } from 'lucide-react';
+import { Cloud, Download, LogOut, Upload, Trash2, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { todayKey, useStore } from '../state/store';
+import { todayKey, useStore, useSync } from '../state/store';
 import { useToast } from '../components/ui';
 
 export function SettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { state, dispatch } = useStore();
+  const { dispatch, exportAll } = useStore();
+  const { status, enabled, signOut } = useSync();
+  const signedIn = enabled && status.mode !== 'signedOut' && status.mode !== 'disabled';
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -14,7 +16,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
 
   const exportJson = () => {
     try {
-      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(exportAll(), null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -102,7 +104,9 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
                 </button>
               ) : (
                 <div className="rounded-xl bg-[#212121] p-4">
-                  <p className="text-sm text-gray-400 mb-3">Erase every day, topic and review? This can't be undone.</p>
+                  <p className="text-sm text-gray-400 mb-3">
+                    Erase every day, topic and review on this device? This can't be undone.{signedIn ? ' Rows already synced stay in your account.' : ''}
+                  </p>
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -123,7 +127,31 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
               )}
               {error && <p className="text-xs text-red-400/70 pt-1">{error}</p>}
             </div>
-            <p className="text-[11px] text-gray-500 mt-5">Data lives only in this browser. Export a backup now and then.</p>
+            {signedIn && (
+              <div className="mt-4 pt-4 border-t border-white/5 space-y-2" style={{ color: '#E1E0CC' }}>
+                <p className="text-xs text-gray-400 flex items-center gap-2">
+                  <Cloud className="w-3.5 h-3.5 text-primary" /> Syncing as <span className="text-primary truncate">{status.email}</span>
+                </p>
+                <button
+                  type="button"
+                  className={btn}
+                  onClick={async () => {
+                    try {
+                      await signOut();
+                      toast('Signed out — data stays on this device');
+                      close();
+                    } catch {
+                      setError('Could not sign out. Try again.');
+                    }
+                  }}
+                >
+                  <LogOut className="w-4 h-4 text-primary" /> Sign out
+                </button>
+              </div>
+            )}
+            <p className="text-[11px] text-gray-500 mt-5">
+              {signedIn ? 'Saved on this device and synced to your account.' : 'Data lives only in this browser. Export a backup now and then.'}
+            </p>
           </motion.div>
         </motion.div>
       )}

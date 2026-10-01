@@ -100,4 +100,6 @@ export type Action =
   | { type: 'freeze'; date: string }
   | { type: 'updateReview'; week: number; patch: Partial<ReviewRecord> }
   | { type: 'import'; state: unknown; today: string }
-  | { type: 'reset'; today: string };
+  | { type: 'reset'; today: string }
+  /** Internal: swap in a state already persisted by the storage layer (remote merge). */
+  | { type: 'replace'; state: TrackerState };

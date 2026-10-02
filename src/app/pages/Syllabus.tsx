@@ -7,6 +7,7 @@ import { Card, RoundCheck, SectionLabel, SubjectDot, listItem, useToast } from '
 import { BASE_WEEKS, DSA_GOALS, SUBJECTS, type SubjectId } from '../../data/plan';
 import { fromKey, planStatus, toKey, weekNumberFor, weekRangeLabel } from '../../lib/dates';
 import { useNow } from '../../lib/hooks';
+import { totalDsa } from '../../lib/dayDetails';
 import {
   emptyUserWeek,
   lastPlannedWeek,
@@ -59,7 +60,7 @@ export default function Syllabus() {
   const overallPct = plannedTopics.length ? Math.round((overallDone / plannedTopics.length) * 100) : 0;
 
   // DSA goal: base phases keep ~110 / ~250 / ~350; a user phase may set its own; otherwise running total only.
-  const totalDsa = Object.values(state.days).reduce((s, d) => s + d.dsa, 0);
+  const dsaTotal = totalDsa(state);
   const dsaGoals: { label: string; count: number; active: boolean }[] =
     currentPhase.kind === 'base'
       ? (() => {
@@ -158,10 +159,10 @@ export default function Syllabus() {
 
         <div className="mt-4 pt-4 border-t border-white/5 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
           <span className="inline-flex items-center gap-2" style={TEXT}>
-            <SubjectDot color={SUBJECTS[0].color} /> DSA problems: <span className="tabular-nums">{totalDsa}</span>
+            <SubjectDot color={SUBJECTS[0].color} /> DSA problems: <span className="tabular-nums">{dsaTotal}</span>
           </span>
           {dsaGoals.map((g) => (
-            <span key={g.label} className={`text-xs ${g.active ? 'text-primary' : totalDsa >= g.count ? 'text-gray-500 line-through' : 'text-gray-500'}`}>
+            <span key={g.label} className={`text-xs ${g.active ? 'text-primary' : dsaTotal >= g.count ? 'text-gray-500 line-through' : 'text-gray-500'}`}>
               {g.label}
             </span>
           ))}
@@ -169,7 +170,7 @@ export default function Syllabus() {
             <div className="w-full h-1 rounded-full bg-[#212121] overflow-hidden">
               <div
                 className="h-full rounded-full transition-all duration-700"
-                style={{ width: `${Math.min(100, (totalDsa / activeGoal.count) * 100)}%`, background: SUBJECTS[0].color }}
+                style={{ width: `${Math.min(100, (dsaTotal / activeGoal.count) * 100)}%`, background: SUBJECTS[0].color }}
               />
             </div>
           )}

@@ -11,11 +11,18 @@ import { effectiveSlots, formatMinutes, formatStopwatch, getDayItems, groupBySlo
 import { effectiveHours, formatHours, hoursByTask } from '../../lib/hours';
 import { copyText, useNow } from '../../lib/hooks';
 import { getWeek, type EffectiveTopic, type EffectiveWeek } from '../../lib/planModel';
-import { currentStreak, dayStats } from '../../lib/streak';
+import { currentStreak, statsFor } from '../../lib/streak';
 import { emptyDay, useStore } from '../../state/store';
 import type { DayRecord, Override, TaskSubject } from '../../state/types';
 import { TaskBoard } from '../today/TaskBoard';
 import { TEXT, subjectLabel } from '../today/shared';
+import { DayDetails } from '../DayDetails';
+import { shouldRemindDsa } from '../../lib/dayDetails';
+import { browserKV } from '../../lib/storage/kv';
+import { yesterdayKey } from '../../lib/tasks';
+
+/** Per-device: which day's "Forgot yesterday's DSA count?" reminder was dismissed. */
+const DSA_REMINDER_KEY = 'persist-dsa-reminder-dismissed';
 
 const describe = (v: Pick<Override, 'text' | 'durationMin' | 'subject'>) =>
   `"${v.text}"${v.durationMin ? ` ${formatMinutes(v.durationMin)}` : ''} (${subjectLabel(v.subject as TaskSubject)})`;
@@ -29,7 +36,7 @@ export default function Today() {
   const day: DayRecord = state.days[key] ?? emptyDay();
   const week = getWeek(state.plan, weekNumberFor(now));
   const sunday = isSunday(now);
-  const stats = dayStats(day, now);
+  const stats = statsFor(state, now);
   const status = planStatus(now);
   const streak = currentStreak(state, now);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -38,6 +45,9 @@ export default function Today() {
   const cleared = carriedToday.filter((c) => c.done);
   const pending = carriedToday.filter((c) => !c.done);
   const hours = effectiveHours(state, key, now.getTime());
+  const [detail, setDetail] = useState<string | null>(null);
+  const [dismissedFor, setDismissedFor] = useState<string | null>(() => browserKV.getItem(DSA_REMINDER_KEY));
+  const remind = shouldRemindDsa(state, key, dismissedFor);
 
   const copy = async (text: string) => {
     toast((await copyText(text)) ? 'Copied' : 'Copy failed');
@@ -123,6 +133,32 @@ export default function Today() {
           </SectionLabel>
           <TaskBoard dateKey={key} />
         </Card>
+
+        {remind && (
+          <div className="flex items-center gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/5 pl-4 pr-1 py-1 text-sm">
+            <span className="flex-1 min-w-0 text-amber-200/80">Forgot yesterday's DSA count?</span>
+            <button
+              type="button"
+              onClick={() => setDetail(yesterdayKey(key))}
+              className="min-h-[40px] px-3 rounded-full text-primary underline underline-offset-4 hover:opacity-80"
+            >
+              Add it
+            </button>
+            <button
+              type="button"
+              aria-label="Dismiss reminder"
+              onClick={() => {
+                const y = yesterdayKey(key);
+                browserKV.setItem(DSA_REMINDER_KEY, y);
+                setDismissedFor(y);
+              }}
+              className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:text-primary"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+        <DayDetails dateKey={detail} onClose={() => setDetail(null)} />
 
         <Card>
           <SectionLabel>Today's numbers</SectionLabel>

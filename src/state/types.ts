@@ -94,7 +94,12 @@ export interface DayRecord {
   placement: Record<string, string>;
   /** taskId -> tracked time. */
   timers: Record<string, TaskTimer>;
+  /** When this (past) day's numbers or notes were last changed from Day details (epoch ms). */
+  editedAt?: number;
 }
+
+/** Fields that can be filled in or corrected later from Day details. Ticks are not among them. */
+export type DayEdit = Pick<DayRecord, 'dsa' | 'apps' | 'hours' | 'hoursManual' | 'topicsCovered' | 'morning' | 'night'>;
 
 /** Topic text per subject for a week; null = not set yet. */
 export type WeekTopics = Record<SubjectId, string | null>;
@@ -164,6 +169,11 @@ export type Action =
   | { type: 'toggleCustom'; date: string; id: string; at?: number }
   | { type: 'setCounter'; date: string; field: CounterField; value: number }
   | { type: 'resetHours'; date: string }
+  /**
+   * Day details: fill in or correct a past day's numbers and notes. Rejected for future days and
+   * days before the plan. topicIds: syllabus topics picked from autocomplete (ticked on that date).
+   */
+  | { type: 'editDay'; date: string; today: string; at: number; patch: DayEdit; topicIds?: string[] }
   | { type: 'setText'; date: string; field: 'morning' | 'night'; value: string }
   | { type: 'addTag'; date: string; tag: string; topicId?: string }
   | { type: 'removeTag'; date: string; index: number }

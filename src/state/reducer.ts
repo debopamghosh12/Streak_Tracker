@@ -1,5 +1,5 @@
 /** Pure state logic: no React, no storage. */
-import { SUBJECTS } from '../data/plan';
+import { PLAN_START, SUBJECTS } from '../data/plan';
 import { fromKey, toKey } from '../lib/dates';
 import { datesToRoll, makeCarried, tomorrowKey, unfinishedTasks, yesterdayKey } from '../lib/tasks';
 import { effectiveSlots, findRunning, getDayItems, trackedMs, validateSlot } from '../lib/dayItems';
@@ -172,6 +172,7 @@ export function sanitizeDay(v: Record<string, unknown>): DayRecord {
     d.placement = Object.fromEntries(Object.entries(v.placement).filter(([, x]) => typeof x === 'string')) as Record<string, string>;
   }
   d.timers = sanitizeTimers(v.timers);
+  if (typeof v.editedAt === 'number' && Number.isFinite(v.editedAt) && v.editedAt > 0) d.editedAt = v.editedAt;
   return d;
 }
 
@@ -443,6 +444,28 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
       }));
     case 'setCounter':
       return withDay(state, action.date, (d) => ({ ...d, [action.field]: action.value, ...(action.field === 'hours' ? { hoursManual: true } : {}) }));
+    case 'editDay': {
+      if (action.date > action.today || action.date < toKey(PLAN_START)) return state; // future / pre-plan: locked
+      const p = action.patch;
+      const clamp = (n: number, max: number, step: number) => Math.min(max, Math.max(0, Math.round((Number(n) || 0) / step) * step));
+      const tags = [...new Set(p.topicsCovered.map((t) => t.trim()).filter(Boolean))];
+      let next = withDay(state, action.date, (d) => ({
+        ...d,
+        dsa: clamp(p.dsa, 50, 1),
+        apps: clamp(p.apps, 50, 1),
+        hoursManual: p.hoursManual,
+        hours: p.hoursManual ? clamp(p.hours, 16, 0.25) : 0,
+        topicsCovered: tags,
+        morning: p.morning,
+        night: p.night,
+        ...(action.date < action.today ? { editedAt: action.at } : {}),
+      }));
+      const newTopics = (action.topicIds ?? []).filter((id) => !next.topicsDone[id]);
+      if (newTopics.length) {
+        next = { ...next, topicsDone: { ...next.topicsDone, ...Object.fromEntries(newTopics.map((id) => [id, action.date])) } };
+      }
+      return next;
+    }
     case 'resetHours':
       return withDay(state, action.date, (d) => ({ ...d, hours: 0, hoursManual: false }));
     case 'setText':

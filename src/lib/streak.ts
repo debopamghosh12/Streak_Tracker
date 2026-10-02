@@ -19,24 +19,37 @@ export interface DayStats {
  * carried items never enter the denominator, so finishing them later can't change any verdict.
  * Mon–Sat: >= 70% done AND at least one DSA task done. Sunday: 3 of 5 (60%, scaled if tasks are skipped/added).
  */
-export function dayStats(day: DayRecord | undefined, date: Date): DayStats {
+export function dayStats(day: DayRecord | undefined, date: Date, carriedAway?: ReadonlySet<string>): DayStats {
   const { active } = getDayTasks(day, date);
+  // A task carried away from this day counts as not done here, even if a tick for it arrives later.
+  const isDone = (t: { id: string; done: boolean }) => t.done && !carriedAway?.has(t.id);
   const total = active.length;
-  const done = active.filter((t) => t.done).length;
+  const done = active.filter(isDone).length;
   const pct = total ? Math.round((done / total) * 100) : 0;
   if (isSunday(date)) {
     const need = Math.ceil((total * SUNDAY_MIN_TASKS) / SUNDAY_TASKS.length - 1e-9);
     const counts = total > 0 && done >= need;
     return { done, total, pct, dsaDone: true, counts, needed: Math.max(0, need - done) };
   }
-  const dsaDone = active.some((t) => t.done && t.subject === 'dsa');
+  const dsaDone = active.some((t) => isDone(t) && t.subject === 'dsa');
   const need = Math.ceil(total * STREAK_THRESHOLD - 1e-9);
   const counts = total > 0 && done >= need && dsaDone;
   const needed = counts ? 0 : Math.max(need - done, dsaDone ? 0 : 1);
   return { done, total, pct, dsaDone, counts, needed };
 }
 
-export const statsFor = (state: TrackerState, date: Date) => dayStats(state.days[toKey(date)], date);
+/** Task ids carried away from a day (carried items made from it, including dropped ones). */
+export function carriedAwayFrom(state: Pick<TrackerState, 'carried' | 'carryDropped'>, key: string): Set<string> {
+  const ids = new Set<string>();
+  for (const c of state.carried) if (c.sourceDate === key) ids.add(c.sourceBlockId);
+  for (const id of state.carryDropped) if (id.startsWith(`${key}:`)) ids.add(id.slice(key.length + 1));
+  return ids;
+}
+
+export const statsFor = (state: TrackerState, date: Date) => {
+  const key = toKey(date);
+  return dayStats(state.days[key], date, carriedAwayFrom(state, key));
+};
 
 const isFrozen = (state: TrackerState, date: Date) => !!state.days[toKey(date)]?.frozen;
 

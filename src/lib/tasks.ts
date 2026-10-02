@@ -45,6 +45,8 @@ export interface DayTasks {
 export function getDayTasks(day: DayRecord | undefined, date: Date, plan: UserPlan = EMPTY_PLAN): DayTasks {
   const overrides = day?.overrides ?? {};
   const skipped = day?.skipped ?? {};
+  // A task moved to tomorrow counts as not done today, even if it had been ticked before moving.
+  const movedOut = new Set(day?.movedOut ?? []);
   const planned: DayTask[] = [];
 
   if (isSunday(date)) {
@@ -59,7 +61,7 @@ export function getDayTasks(day: DayRecord | undefined, date: Date, plan: UserPl
         start: o?.start,
         end: o?.end,
         subject: o ? o.subject : null,
-        done: !!day?.sundayTasks[t.id],
+        done: !!day?.sundayTasks[t.id] && !movedOut.has(t.id),
         edited: !!o,
         base,
         carry: true,
@@ -79,7 +81,7 @@ export function getDayTasks(day: DayRecord | undefined, date: Date, plan: UserPl
         start: o?.start ?? b.start,
         end: o?.end ?? b.end,
         subject: o ? o.subject : b.subject,
-        done: !!day?.blocks[b.id],
+        done: !!day?.blocks[b.id] && !movedOut.has(b.id),
         edited: !!o,
         base,
         carry: b.carry,
@@ -106,7 +108,7 @@ export function getDayTasks(day: DayRecord | undefined, date: Date, plan: UserPl
   return {
     active: all.filter((t) => !(t.id in skipped)),
     skipped: all.filter((t) => t.id in skipped).map((task) => ({ task, reason: skipped[task.id] })),
-    movedOut: new Set(day?.movedOut ?? []),
+    movedOut,
   };
 }
 

@@ -12,6 +12,7 @@ import { useNow } from '../../lib/hooks';
 import { canFreezeYesterday, currentStreak, daysCounted, daysSoFar, freezeUsedInWeek, longestStreak, statsFor } from '../../lib/streak';
 import { useStore } from '../../state/store';
 import { effectiveHours, formatHours } from '../../lib/hours';
+import { DayDetails } from '../DayDetails';
 
 const TEXT = { color: '#E1E0CC' };
 const ROWS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -40,6 +41,7 @@ export default function Streak() {
   const longest = longestStreak(state, now);
   const counted = daysCounted(state, now);
   const [tip, setTip] = useState<Tip | null>(null);
+  const [detail, setDetail] = useState<string | null>(null);
 
   const yesterday = addDays(now, -1);
   const freeze = canFreezeYesterday(state, now);
@@ -70,6 +72,7 @@ export default function Streak() {
   return (
     <div>
       <PageTitle first="Streak," second="don't break the chain." />
+      <DayDetails dateKey={detail} onClose={() => setDetail(null)} />
 
       {/* Big number */}
       <Card className="mb-4 flex flex-col md:flex-row md:items-end gap-4 md:gap-10">
@@ -119,12 +122,16 @@ export default function Streak() {
                     <button
                       key={w.n}
                       type="button"
-                      aria-label={`${format(date, 'EEE d MMM')}: ${s.pct}%`}
+                      aria-label={`${format(date, 'EEE d MMM')}: ${s.pct}%${future ? '' : ' — open day details'}`}
                       onMouseEnter={(e) => showTip(date, e.currentTarget)}
                       onMouseLeave={() => setTip(null)}
                       onFocus={(e) => showTip(date, e.currentTarget)}
                       onBlur={() => setTip(null)}
-                      onClick={(e) => showTip(date, e.currentTarget)}
+                      onClick={(e) => {
+                        if (future) return showTip(date, e.currentTarget); // future days aren't editable
+                        setTip(null);
+                        setDetail(toKey(date));
+                      }}
                       className={`h-8 sm:h-9 min-w-[30px] rounded-md flex items-center justify-center transition-transform hover:scale-110 ${
                         isToday ? 'ring-1 ring-primary ring-offset-2 ring-offset-[#101010]' : ''
                       }`}
@@ -138,7 +145,7 @@ export default function Streak() {
             ))}
           </div>
         </div>
-        <p className="text-[11px] text-gray-500 mt-2">Columns are plan weeks (Fri–Thu), from week 1 on. Tap a day for details.</p>
+        <p className="text-[11px] text-gray-500 mt-2">Columns are plan weeks (Fri–Thu), from week 1 on. Tap a past day to see or fill in its numbers.</p>
       </Card>
 
       <AnimatePresence>

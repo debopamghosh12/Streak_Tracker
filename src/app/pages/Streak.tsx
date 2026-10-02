@@ -11,6 +11,7 @@ import { heatmapRange } from '../../lib/planModel';
 import { useNow } from '../../lib/hooks';
 import { canFreezeYesterday, currentStreak, daysCounted, daysSoFar, freezeUsedInWeek, longestStreak, statsFor } from '../../lib/streak';
 import { useStore } from '../../state/store';
+import { effectiveHours, formatHours } from '../../lib/hours';
 
 const TEXT = { color: '#E1E0CC' };
 const ROWS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -64,6 +65,7 @@ export default function Streak() {
 
   const tipDay = tip ? state.days[toKey(tip.date)] : undefined;
   const tipStats = tip ? statsFor(state, tip.date) : null;
+  const tipHours = tip ? effectiveHours(state, tip.date) : null;
 
   return (
     <div>
@@ -154,7 +156,7 @@ export default function Streak() {
               {tipDay?.frozen ? ' · frozen' : ''}
             </p>
             <p className="text-gray-400">
-              DSA {tipDay?.dsa ?? 0} · {tipDay?.hours ?? 0} hrs
+              DSA {tipDay?.dsa ?? 0} · {formatHours(tipHours?.hours ?? 0)} hrs{tipHours?.source === 'manual' ? ' (manual)' : ''}
             </p>
           </motion.div>
         )}
@@ -230,7 +232,10 @@ function HoursChart({ days, now }: { days: Date[]; now: Date }) {
   const W = 320;
   const H = 170;
   const pad = { l: 24, r: 8, t: 10, b: 24 };
-  const max = 12;
+  const values = days.map((d) => effectiveHours(state, d));
+  // 0–12 scale, growing in steps of 4 if a day goes beyond it.
+  const max = Math.max(12, Math.ceil(Math.max(...values.map((v) => v.hours)) / 4) * 4);
+  const ticks = Array.from({ length: max / 4 + 1 }, (_, i) => i * 4);
   const innerW = W - pad.l - pad.r;
   const innerH = H - pad.t - pad.b;
   const bw = innerW / days.length;
@@ -238,7 +243,7 @@ function HoursChart({ days, now }: { days: Date[]; now: Date }) {
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Hours studied this week">
-      {[0, 4, 8, 12].map((v) => (
+      {ticks.map((v) => (
         <g key={v}>
           <line x1={pad.l} x2={W - pad.r} y1={y(v)} y2={y(v)} stroke="#1f1f1f" />
           <text x={pad.l - 6} y={y(v) + 3} textAnchor="end" fontSize="9" fill="#6b7280">
@@ -247,7 +252,7 @@ function HoursChart({ days, now }: { days: Date[]; now: Date }) {
         </g>
       ))}
       {days.map((d, i) => {
-        const hrs = state.days[toKey(d)]?.hours ?? 0;
+        const hrs = values[i].hours;
         const isToday = differenceInCalendarDays(d, now) === 0;
         const future = differenceInCalendarDays(d, now) > 0;
         const h = (hrs / max) * innerH;

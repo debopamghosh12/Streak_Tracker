@@ -40,6 +40,8 @@ export interface DayRecord {
   dsa: number;
   apps: number;
   hours: number;
+  /** True when hours were entered by hand; otherwise the app uses the auto value from ticked blocks. */
+  hoursManual: boolean;
   topicsCovered: string[];
   morning: string;
   night: string;
@@ -110,6 +112,7 @@ export type Action =
   | { type: 'toggleSunday'; date: string; id: string }
   | { type: 'toggleCustom'; date: string; id: string }
   | { type: 'setCounter'; date: string; field: CounterField; value: number }
+  | { type: 'resetHours'; date: string }
   | { type: 'setText'; date: string; field: 'morning' | 'night'; value: string }
   | { type: 'addTag'; date: string; tag: string; topicId?: string }
   | { type: 'removeTag'; date: string; index: number }

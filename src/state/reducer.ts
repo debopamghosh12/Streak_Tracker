@@ -13,6 +13,7 @@ export const emptyDay = (): DayRecord => ({
   dsa: 0,
   apps: 0,
   hours: 0,
+  hoursManual: false,
   topicsCovered: [],
   morning: '',
   night: '',
@@ -59,6 +60,8 @@ export function sanitizeDay(v: Record<string, unknown>): DayRecord {
   if (isObj(v.blocks)) d.blocks = Object.fromEntries(Object.entries(v.blocks).map(([k, x]) => [k, !!x]));
   if (isObj(v.sundayTasks)) d.sundayTasks = Object.fromEntries(Object.entries(v.sundayTasks).map(([k, x]) => [k, !!x]));
   for (const f of ['dsa', 'apps', 'hours'] as const) d[f] = Number.isFinite(Number(v[f])) ? Number(v[f]) : 0;
+  // Older saves had no flag: any hours entered then were entered by hand.
+  d.hoursManual = typeof v.hoursManual === 'boolean' ? v.hoursManual : d.hours > 0;
   d.topicsCovered = Array.isArray(v.topicsCovered) ? v.topicsCovered.filter((t): t is string => typeof t === 'string') : [];
   d.morning = str(v.morning);
   d.night = str(v.night);
@@ -263,7 +266,9 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
         customTasks: d.customTasks.map((c) => (c.id === action.id ? { ...c, done: !c.done } : c)),
       }));
     case 'setCounter':
-      return withDay(state, action.date, (d) => ({ ...d, [action.field]: action.value }));
+      return withDay(state, action.date, (d) => ({ ...d, [action.field]: action.value, ...(action.field === 'hours' ? { hoursManual: true } : {}) }));
+    case 'resetHours':
+      return withDay(state, action.date, (d) => ({ ...d, hours: 0, hoursManual: false }));
     case 'setText':
       return withDay(state, action.date, (d) => ({ ...d, [action.field]: action.value }));
     case 'addTag': {

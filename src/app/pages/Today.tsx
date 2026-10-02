@@ -10,6 +10,7 @@ import { getWeek, type EffectiveTopic, type EffectiveWeek } from '../../lib/plan
 import { Link } from 'react-router-dom';
 import { copyText, useNow } from '../../lib/hooks';
 import { currentStreak, dayStats } from '../../lib/streak';
+import { effectiveHours, formatHours } from '../../lib/hours';
 import { getDayTasks, makeCarried, tomorrowKey, type DayTask, type DayTasks } from '../../lib/tasks';
 import { emptyDay, useStore } from '../../state/store';
 import type { CarriedItem, DayRecord, TaskSubject } from '../../state/types';
@@ -39,6 +40,7 @@ export default function Today() {
   const tasks = useMemo(() => getDayTasks(day, now, state.plan), [day, key, state.plan]);
   const carriedToday = state.carried.filter((c) => c.currentDate === key);
   const cleared = carriedToday.filter((c) => c.done);
+  const hours = effectiveHours(state, key);
   const pending = carriedToday.filter((c) => !c.done);
 
   const copy = async (text: string) => {
@@ -65,7 +67,7 @@ export default function Today() {
     const moved = tasks.active.filter((t) => tasks.movedOut.has(t.id));
     const parts = [
       `Done on ${dateLabel} (Week ${week.n}): ${done.length ? done.join(', ') : 'nothing checked yet'} (${stats.done}/${stats.total}, ${stats.pct}%)`,
-      `DSA problems: ${day.dsa} · Applications: ${day.apps} · Hours: ${day.hours}`,
+      `DSA problems: ${day.dsa} · Applications: ${day.apps} · Hours: ${formatHours(hours.hours)} (${hours.source})`,
       `Topics covered: ${day.topicsCovered.length ? day.topicsCovered.join('; ') : '—'}`,
     ];
     if (edited.length) {
@@ -126,10 +128,33 @@ export default function Today() {
                 key={c.field}
                 label={c.label}
                 hint={c.target}
-                value={day[c.field]}
+                value={c.field === 'hours' ? hours.hours : day[c.field]}
                 step={c.step}
                 max={c.max}
                 onChange={(v) => dispatch({ type: 'setCounter', date: key, field: c.field as CounterField, value: v })}
+                extra={
+                  c.field === 'hours' ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
+                          hours.source === 'auto' ? 'text-gray-400 border-white/10' : 'text-amber-300/80 border-amber-300/30'
+                        }`}
+                        title={hours.source === 'auto' ? 'From ticked blocks and their times' : 'Entered by hand'}
+                      >
+                        {hours.source}
+                      </span>
+                      {hours.source === 'manual' && (
+                        <button
+                          type="button"
+                          onClick={() => dispatch({ type: 'resetHours', date: key })}
+                          className="text-[11px] text-gray-400 underline underline-offset-2 hover:text-primary min-h-[28px]"
+                        >
+                          Reset to auto
+                        </button>
+                      )}
+                    </span>
+                  ) : undefined
+                }
               />
             ))}
           </div>
@@ -784,6 +809,7 @@ function Counter({
   step,
   max,
   onChange,
+  extra,
 }: {
   label: string;
   hint: string;
@@ -791,6 +817,7 @@ function Counter({
   step: number;
   max: number;
   onChange: (v: number) => void;
+  extra?: React.ReactNode;
 }) {
   const set = (v: number) => onChange(Math.max(0, Math.min(max, Math.round(v / step) * step)));
   const btn =
@@ -802,12 +829,13 @@ function Counter({
           {label}
         </p>
         <p className="text-[11px] text-gray-500">{hint}</p>
+        {extra && <div className="mt-1">{extra}</div>}
       </div>
       <button type="button" className={btn} onClick={() => set(value - step)} disabled={value <= 0} aria-label={`Decrease ${label}`}>
         <Minus className="w-4 h-4 text-primary" />
       </button>
-      <motion.span key={value} initial={{ y: -4, opacity: 0.4 }} animate={{ y: 0, opacity: 1 }} className="w-10 text-center text-xl tabular-nums" style={TEXT}>
-        {value}
+      <motion.span key={value} initial={{ y: -4, opacity: 0.4 }} animate={{ y: 0, opacity: 1 }} className="min-w-[2.5rem] text-center text-xl tabular-nums" style={TEXT}>
+        {formatHours(value)}
       </motion.span>
       <button type="button" className={btn} onClick={() => set(value + step)} disabled={value >= max} aria-label={`Increase ${label}`}>
         <Plus className="w-4 h-4 text-primary" />

@@ -9,6 +9,7 @@ import { fromKey, toKey, weekDays, weekNumberFor, weekRangeLabel } from '../../l
 import { getWeek, lastShownWeek } from '../../lib/planModel';
 import { copyText, useNow } from '../../lib/hooks';
 import { statsFor } from '../../lib/streak';
+import { effectiveHours } from '../../lib/hours';
 import { emptyReview, useStore } from '../../state/store';
 import type { ReviewRecord, TrackerState } from '../../state/types';
 
@@ -56,7 +57,7 @@ export function weekScore(state: TrackerState, n: number) {
   });
   const score = Math.round((rows.filter((r) => r.met).length / rows.length) * 100);
   const daysCounted = days.filter((d) => statsFor(state, d).counts).length;
-  const hours = keys.reduce((s, k) => s + (state.days[k]?.hours ?? 0), 0);
+  const hours = Math.round(keys.reduce((s, k) => s + effectiveHours(state, k).hours, 0) * 100) / 100;
   return { rows, score, review, dsa, apps, daysCounted, hours, phase: w.phase };
 }
 

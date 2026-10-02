@@ -9,8 +9,8 @@
 | Fact | Value | Where |
 | --- | --- | --- |
 | Stack | React 18 + TypeScript + Vite 5 + Tailwind 3, framer-motion, react-router-dom 6, date-fns, Supabase (Postgres + Auth), suncalc, uuid | `package.json` |
-| Size | ~7,300 lines in `src/` across 49 files | `src/` |
-| Tests | **52 Vitest tests** in 5 files (reducer 11, planModel 8, dayCycle 12, supabaseStore 7, sync 14) | `src/**/*.test.ts` |
+| Size | ~7,500 lines in `src/` across 51 files | `src/` |
+| Tests | **60 Vitest tests** in 6 files (reducer 11, planModel 8, dayCycle 12, hours 8, supabaseStore 7, sync 14) | `src/**/*.test.ts` |
 | Reducer | 32 action cases, pure function | `src/state/reducer.ts` |
 | Base plan | 13 weeks from Fri 2 Oct 2026, 5 subjects, 65 topics, 9 blocks/day, 5 Sunday tasks | `src/data/plan.ts` |
 | Streak rule | Mon–Sat: ≥70% of the day's tasks **and** ≥1 DSA task; Sunday: 3 of 5 (60%, rescaled) | `src/lib/streak.ts` |
@@ -45,11 +45,11 @@
 >
 > **Hard problem.** Making sync safe across my laptop and phone. Two devices rolling over the same midnight must not create duplicate carried tasks, so carried items get deterministic ids, a uuid v5 of my user id plus the source date and task. The merge is "newer `updated_at` wins" per row, deletes are soft so they reach every device, and the whole engine sits behind a `RemoteBackend` interface so I can swap Supabase for my own Spring Boot API later.
 >
-> **Result.** It's live, I use it daily, and the core logic is covered by 52 unit tests, including simulated two-device sync with a fake server and mocked clocks.
+> **Result.** It's live, I use it daily, and the core logic is covered by 60 unit tests, including simulated two-device sync with a fake server and mocked clocks.
 
 ### Resume bullet (2 lines)
 
-> **Persist — offline-first study-streak tracker** (React, TypeScript, Supabase/Postgres, Vercel). Built a local-first sync engine (persistent outbox, exponential backoff, last-write-wins merge, deterministic UUIDv5 ids, soft deletes) behind a swappable storage interface, with per-user Row Level Security; 52 Vitest tests including simulated multi-device sync.
+> **Persist — offline-first study-streak tracker** (React, TypeScript, Supabase/Postgres, Vercel). Built a local-first sync engine (persistent outbox, exponential backoff, last-write-wins merge, deterministic UUIDv5 ids, soft deletes) behind a swappable storage interface, with per-user Row Level Security; 60 Vitest tests including simulated multi-device sync.
 
 ### "Tell me about a project" opener (1 line)
 
@@ -124,7 +124,7 @@ Yes. I built Persist with Claude Code as a pair programmer, and I'm open about t
 - Supabase now behind an interface so I can move to Spring Boot;
 - reviewing every change before it went in.
 
-I kept quality with gates: `npm test` (52 tests), `npm run lint`, `npm run build` (type-check) before every commit. For the day–night feature I explicitly asked for changes to stay uncommitted until I reviewed them. I also checked that the tests catch real bugs: we deliberately broke the merge rule in `src/lib/storage/merge.ts`, and the offline-edit test failed as it should. I can walk you through any file, for example how `persistDiff` in `src/lib/storage/diff.ts` finds changes by reference equality.
+I kept quality with gates: `npm test` (60 tests), `npm run lint`, `npm run build` (type-check) before every commit. For the day–night feature I explicitly asked for changes to stay uncommitted until I reviewed them. I also checked that the tests catch real bugs: we deliberately broke the merge rule in `src/lib/storage/merge.ts`, and the offline-edit test failed as it should. I can walk you through any file, for example how `persistDiff` in `src/lib/storage/diff.ts` finds changes by reference equality.
 
 **Likely follow-ups:**
 - *What did the AI get wrong?* → An early test for "no duplicate carried items across devices" didn't really test anything: a fresh device had already rolled past Monday. I caught it and rewrote it with seeded state. Another one: the spec said uuid v5 of `sourceDate + blockId`, but the table's primary key is global, so two users would collide. The id now includes the user id (`carriedUuid` in `src/lib/storage/supabaseStore.ts`).
@@ -159,7 +159,7 @@ Shipping sync mattered more than owning the server on day one. Supabase gives Po
 5. **The base plan in code, user data as overrides** (`overrides`, `plan.weeks`). Editing a day never mutates the plan. The cost is merge logic in `src/lib/planModel.ts`.
 
 **Likely follow-ups:**
-- *Which trade-off would you revisit first?* → Row-level last-write-wins for `days`. I'd move to per-field merges or server versions (see Q53).
+- *Which trade-off would you revisit first?* → Row-level last-write-wins for `days`. I'd move to per-field merges or server versions (see Q54).
 - *Why not normalise blocks?* → A day is always read and written as a unit, and sync is per row. JSONB keeps it to one upsert per day.
 
 **Red flags to avoid:** "There were no trade-offs." Listing trade-offs without the cost side.
@@ -491,7 +491,7 @@ Three concrete ways:
 
 A `DayRecord` holds:
 - `blocks` / `sundayTasks` (id → done);
-- counters `dsa`, `apps`, `hours`;
+- counters `dsa`, `apps`, `hours`, plus `hoursManual` (hand-entered vs auto from ticked blocks);
 - `topicsCovered`, and `morning` / `night` notes;
 - `frozen`;
 - `overrides` (per-date edits), `skipped` (id → reason), `customTasks[]` and `movedOut[]`.
@@ -659,7 +659,7 @@ Finally it returns `max(best, currentStreak)`, which covers practice days before
 
 **Likely follow-ups:**
 - *Could you cache it?* → Yes, recompute only from the last changed day. With D ≈ 100–400 it isn't worth the complexity yet.
-- *SQL version?* → The gaps-and-islands query in section h (Q61).
+- *SQL version?* → The gaps-and-islands query in section h (Q62).
 
 **Red flags to avoid:** O(D²) nested loops; forgetting that today shouldn't reset the run.
 
@@ -696,7 +696,7 @@ It's idempotent because ids are deterministic, existing and dropped ids are skip
 
 **Likely follow-ups:**
 - *Complexity?* → O(C + Δ × T): C carried items, Δ days since `rolledThrough`, T tasks per day.
-- *What about two devices?* → Same local id → same server uuid v5 → upserts collapse into one row (Q49).
+- *What about two devices?* → Same local id → same server uuid v5 → upserts collapse into one row (Q50).
 
 **Red flags to avoid:** "I check if it already ran today" with a boolean flag. That isn't safe across devices or after a crash.
 
@@ -761,9 +761,29 @@ The real version in `src/lib/streak.ts` takes `state` and uses `statsFor(state, 
 
 ---
 
+### Q38. How is "hours studied" calculated?  `[Medium]`
+**Why interviewers ask this:** Deriving a metric from raw data, and handling a manual override cleanly.
+
+**Strong answer:**
+At first it was only a manual counter, so the Streak chart stayed empty when I just ticked blocks. Now `effectiveHours(state, date)` in `src/lib/hours.ts` (a pure function) decides the value:
+- **Auto hours** come from the day's *effective* task list (`getDayTasks` in `src/lib/tasks.ts`): I add up `end − start` for every ticked block and every ticked custom task that has both times. Edited times from `overrides` win, skipped blocks are excluded, and Sunday checkpoint tasks add nothing.
+- **Carried items** count on the day I complete them (`completedOn`), using the duration of the original task on its source day, including that day's edits. The work is credited when it's actually done, and the original day's numbers don't change.
+- **Manual override:** typing a value with + or − sets `hoursManual: true` on that day, and that value wins. "Reset to auto" (the `resetHours` action) clears it. For saves from before this change, any day with hours above 0 is treated as manual in `sanitizeDay`.
+
+One function is used everywhere hours appear: the Today counter (with an auto/manual label), the night check-in copy text, the Streak chart and heatmap tooltip, and the Weekly Review total. A fully ticked weekday is 10.5 h, and the chart's 0–12 scale grows in steps of 4 if a day goes past 12. Cost is O(T + C) per day (tasks + carried items). Eight tests in `src/lib/hours.test.ts` cover ticked-only, edited times, custom tasks, a carried item finished two days later, manual winning and reset, Sunday, and older saves.
+
+**Likely follow-ups:**
+- *Why compute it instead of storing the auto value?* → One source of truth. If I untick a block or edit its time, the hours can't go stale, and I don't sync derived data.
+- *What if edited blocks overlap?* → They'd be double-counted. Timetable edits don't check for overlaps yet (P5 is the fix), so I'm honest about it.
+- *Why isn't a block moved to tomorrow counted today?* → It wasn't done today. Its hours count when the carried item is completed.
+
+**Red flags to avoid:** Storing a computed total that drifts from the ticks; counting planned time instead of done time.
+
+---
+
 ## f. Dates and time
 
-### Q38. Why store days as `'yyyy-mm-dd'` strings instead of timestamps?  `[Medium]`
+### Q39. Why store days as `'yyyy-mm-dd'` strings instead of timestamps?  `[Medium]`
 **Why interviewers ask this:** Dates vs instants is a common source of bugs.
 
 **Strong answer:**
@@ -776,7 +796,7 @@ A "day" in Persist is a calendar concept: what I did on Monday, my time. So day 
 
 ---
 
-### Q39. How does the midnight rollover actually trigger in the browser?  `[Medium]`
+### Q40. How does the midnight rollover actually trigger in the browser?  `[Medium]`
 **Why interviewers ask this:** Timers, background tabs, real-world reliability.
 
 **Strong answer:**
@@ -794,7 +814,7 @@ Browsers throttle timers in background tabs, so the visibility event matters mos
 
 ---
 
-### Q40. What about timezones: IST vs UTC, and travelling?  `[Medium]`
+### Q41. What about timezones: IST vs UTC, and travelling?  `[Medium]`
 **Why interviewers ask this:** Global users.
 
 **Strong answer:**
@@ -807,7 +827,7 @@ All day logic uses the **browser's local time**. India has a single zone, IST (U
 
 ---
 
-### Q41. DST: does it affect your code?  `[Medium]`
+### Q42. DST: does it affect your code?  `[Medium]`
 **Why interviewers ask this:** Awareness of classic date bugs.
 
 **Strong answer:**
@@ -820,7 +840,7 @@ Not for my users in India, but the code is written to be DST-safe. I never compu
 
 ---
 
-### Q42. How do you test time-dependent code without the real clock?  `[Medium]`
+### Q43. How do you test time-dependent code without the real clock?  `[Medium]`
 **Why interviewers ask this:** Deterministic tests.
 
 **Strong answer:**
@@ -834,7 +854,7 @@ For the day–night sky, "02:00" must mean the same instant everywhere, so `vite
 
 ---
 
-### Q43. How does the day–night hero work?  `[Medium]`
+### Q44. How does the day–night hero work?  `[Medium]`
 **Why interviewers ask this:** A fun feature, but tests interpolation and performance sense.
 
 **Strong answer:**
@@ -857,7 +877,7 @@ Because the anchors are real sun events, golden hour shifts with the season. A t
 
 ## g. Offline-first sync and distributed-systems basics
 
-### Q44. What does "offline-first" mean in your app concretely?  `[Easy]`
+### Q45. What does "offline-first" mean in your app concretely?  `[Easy]`
 **Why interviewers ask this:** Buzzword vs understanding.
 
 **Strong answer:**
@@ -874,7 +894,7 @@ The UI never waits for the network. Offline, the status pill says "Offline — s
 
 ---
 
-### Q45. Explain your outbox.  `[Medium]`
+### Q46. Explain your outbox.  `[Medium]`
 **Why interviewers ask this:** The outbox pattern is a standard reliability pattern.
 
 **Strong answer:**
@@ -891,7 +911,7 @@ The UI never waits for the network. Offline, the status pill says "Offline — s
 
 ---
 
-### Q46. Debounce and batching: what numbers and why?  `[Easy]`
+### Q47. Debounce and batching: what numbers and why?  `[Easy]`
 **Why interviewers ask this:** Practical network efficiency.
 
 **Strong answer:**
@@ -904,7 +924,7 @@ After any change, a flush is scheduled 1,000 ms after the **last** change (`debo
 
 ---
 
-### Q47. How do retries work?  `[Medium]`
+### Q48. How do retries work?  `[Medium]`
 **Why interviewers ask this:** Failure handling.
 
 **Strong answer:**
@@ -917,7 +937,7 @@ If a flush throws, `attempt++` and the next flush is scheduled after `min(60 s, 
 
 ---
 
-### Q48. Explain your merge rule and its problems.  `[Hard]`
+### Q49. Explain your merge rule and its problems.  `[Hard]`
 **Why interviewers ask this:** Conflict resolution is the heart of sync.
 
 **Strong answer:**
@@ -927,13 +947,13 @@ Last-write-wins per row. `mergePulled` in `src/lib/storage/merge.ts` applies a p
 3. **No causality.** Timestamps don't know whether one edit had seen the other.
 
 **Likely follow-ups:**
-- *Fixes?* → Merge per field: `blocks` as a map where each key is its own last-write-wins register. Or server-assigned version numbers with compare-and-set. Or a CRDT (Q53).
+- *Fixes?* → Merge per field: `blocks` as a map where each key is its own last-write-wins register. Or server-assigned version numbers with compare-and-set. Or a CRDT (Q54).
 
 **Red flags to avoid:** "Last-write-wins is fine because conflicts are rare," without naming the failure mode.
 
 ---
 
-### Q49. Why deterministic UUIDs (v5)?  `[Medium]`
+### Q50. Why deterministic UUIDs (v5)?  `[Medium]`
 **Why interviewers ask this:** Idempotency keys.
 
 **Strong answer:**
@@ -947,7 +967,7 @@ A uuid v5 is a hash of a namespace and a name, so the same input always gives th
 
 ---
 
-### Q50. Why soft deletes and tombstones?  `[Medium]`
+### Q51. Why soft deletes and tombstones?  `[Medium]`
 **Why interviewers ask this:** Deletion in replicated systems.
 
 **Strong answer:**
@@ -965,7 +985,7 @@ They have a newer `updated_at`, so every device pulls them and removes the item 
 
 ---
 
-### Q51. How do pulls know what's new? Why the 10-second overlap?  `[Hard]`
+### Q52. How do pulls know what's new? Why the 10-second overlap?  `[Hard]`
 **Why interviewers ask this:** Cursor-based sync and commit-order subtleties.
 
 **Strong answer:**
@@ -978,7 +998,7 @@ Per table I store a cursor: the max server `updated_at` I've seen (`prisma-sync-
 
 ---
 
-### Q52. What happens on first sign-in when both the device and the account already have data?  `[Hard]`
+### Q53. What happens on first sign-in when both the device and the account already have data?  `[Hard]`
 **Why interviewers ask this:** Data migration without loss.
 
 **Strong answer:**
@@ -997,7 +1017,7 @@ Per table I store a cursor: the max server `updated_at` I've seen (`prisma-sync-
 
 ---
 
-### Q53. Is your system eventually consistent? When would you need CRDTs or server versioning?  `[Hard]`
+### Q54. Is your system eventually consistent? When would you need CRDTs or server versioning?  `[Hard]`
 **Why interviewers ask this:** Distributed-systems vocabulary.
 
 **Strong answer:**
@@ -1014,7 +1034,7 @@ For a single student's tracker, per-field last-write-wins on the `blocks` map wo
 
 ## h. Database (PostgreSQL via Supabase)
 
-### Q54. Walk me through your schema.  `[Easy]`
+### Q55. Walk me through your schema.  `[Easy]`
 **Why interviewers ask this:** Can you design and explain tables?
 
 **Strong answer:**
@@ -1038,7 +1058,7 @@ Seven tables over two migrations. Every table has `user_id uuid not null default
 
 ---
 
-### Q55. Why composite primary keys for most tables but a UUID for carried items?  `[Medium]`
+### Q56. Why composite primary keys for most tables but a UUID for carried items?  `[Medium]`
 **Why interviewers ask this:** Key design.
 
 **Strong answer:**
@@ -1051,13 +1071,13 @@ Where the natural identity is "this user's thing X", the composite key *is* that
 
 ---
 
-### Q56. JSONB vs normalised columns: why JSONB for `days`?  `[Medium]`
+### Q57. JSONB vs normalised columns: why JSONB for `days`?  `[Medium]`
 **Why interviewers ask this:** A classic schema trade-off.
 
 **Strong answer:**
 A day is a document: blocks map, Sunday tasks, counters, notes, overrides, skips, custom tasks and moved-out ids. It's always read and written as a whole, and sync works per row. JSONB gives one upsert per day, and new fields need no migration (`sanitizeDay` in `reducer.ts` fills defaults). The costs:
 - **No server-side validation.** Postgres accepts any JSON. RLS checks *who*, not *what*.
-- **Harder analytics.** "Days with ≥70% done" needs `jsonb_each` (Q61).
+- **Harder analytics.** "Days with ≥70% done" needs `jsonb_each` (Q62).
 - **Write amplification:** ticking one block rewrites the whole document.
 
 Columns with real constraints went normalised: `carried_items` and the plan tables.
@@ -1070,7 +1090,7 @@ Columns with real constraints went normalised: `carried_items` and the plan tabl
 
 ---
 
-### Q57. Which indexes did you create and why?  `[Medium]`
+### Q58. Which indexes did you create and why?  `[Medium]`
 **Why interviewers ask this:** Index design follows query patterns.
 
 **Strong answer:**
@@ -1090,20 +1110,20 @@ The composite order matters: equality on `user_id` first, then a range on `updat
 
 ---
 
-### Q58. How is `updated_at` maintained? Why `set search_path = ''`?  `[Medium]`
+### Q59. How is `updated_at` maintained? Why `set search_path = ''`?  `[Medium]`
 **Why interviewers ask this:** Triggers, and a security detail.
 
 **Strong answer:**
 A `BEFORE UPDATE` trigger on each table calls `public.set_updated_at()`, which sets `new.updated_at = now()` (`001_init.sql`; `002` reuses the function). Inserts get the column default. The **server** clock is the source of truth, and clients never send `updated_at`. An upsert that hits a conflict takes the update path, so the trigger fires. `set search_path = ''` stops the function from resolving names through a schema an attacker could create objects in. It's a hardening practice Supabase recommends for functions.
 
 **Likely follow-ups:**
-- *`now()` vs `clock_timestamp()`?* → `now()` is the transaction start time, the same for every row in the statement. That's why pulls overlap by 10 s (Q51).
+- *`now()` vs `clock_timestamp()`?* → `now()` is the transaction start time, the same for every row in the statement. That's why pulls overlap by 10 s (Q52).
 
 **Red flags to avoid:** Trusting a client-sent `updated_at`.
 
 ---
 
-### Q59. How do you manage migrations? And why is the column `current_day`, not `current_date`?  `[Easy]`
+### Q60. How do you manage migrations? And why is the column `current_day`, not `current_date`?  `[Easy]`
 **Why interviewers ask this:** Schema evolution, and SQL basics.
 
 **Strong answer:**
@@ -1116,7 +1136,7 @@ Plain numbered SQL files in `supabase/migrations/`, run in order in the SQL edit
 
 ---
 
-### Q60. ACID and isolation levels: how do they apply here?  `[Medium]`
+### Q61. ACID and isolation levels: how do they apply here?  `[Medium]`
 **Why interviewers ask this:** Database fundamentals.
 
 **Strong answer:**
@@ -1132,7 +1152,7 @@ Plain numbered SQL files in `supabase/migrations/`, run in order in the SQL edit
 
 ---
 
-### Q61. Write some SQL on your schema.  `[Medium]`
+### Q62. Write some SQL on your schema.  `[Medium]`
 **Why interviewers ask this:** SQL is tested in most new-grad rounds.
 
 **Strong answer:** five queries I can write and explain (RLS already limits rows to the caller, but I filter on `user_id` explicitly so the index is used).
@@ -1207,7 +1227,7 @@ order by 2 desc;
 
 ---
 
-### Q62. You found a constraint that breaks after week 13. How do you fix it safely?  `[Hard]`
+### Q63. You found a constraint that breaks after week 13. How do you fix it safely?  `[Hard]`
 **Why interviewers ask this:** Real schema evolution and honesty about bugs.
 
 **Strong answer:**
@@ -1231,7 +1251,7 @@ I'd also change `Outbox.flush` to continue with other tables after one fails, an
 
 ## i. Security
 
-### Q63. What is Row Level Security, and how does `auth.uid()` work?  `[Medium]`
+### Q64. What is Row Level Security, and how does `auth.uid()` work?  `[Medium]`
 **Why interviewers ask this:** The most important security property of the app.
 
 **Strong answer:**
@@ -1250,7 +1270,7 @@ When the browser calls Supabase's REST API with my login JWT, the gateway verifi
 
 ---
 
-### Q64. anon key vs service_role key: what's the difference?  `[Easy]`
+### Q65. anon key vs service_role key: what's the difference?  `[Easy]`
 **Why interviewers ask this:** The most common Supabase security mistake.
 
 **Strong answer:**
@@ -1263,7 +1283,7 @@ The anon (or publishable) key is meant to be public. It identifies the project a
 
 ---
 
-### Q65. What's in a JWT, and how is it used here?  `[Medium]`
+### Q66. What's in a JWT, and how is it used here?  `[Medium]`
 **Why interviewers ask this:** Auth fundamentals.
 
 **Strong answer:**
@@ -1271,13 +1291,13 @@ A JWT is three base64url parts: header, payload (claims like `sub`, `email`, `ro
 
 **Likely follow-ups:**
 - *Is a JWT encrypted?* → No, only signed. Anyone can read the payload, so never put secrets in it.
-- *Where is it stored?* → By default supabase-js keeps it in localStorage. That means an XSS bug could steal it (Q68).
+- *Where is it stored?* → By default supabase-js keeps it in localStorage. That means an XSS bug could steal it (Q69).
 
 **Red flags to avoid:** "A JWT is encrypted."
 
 ---
 
-### Q66. Explain the magic-link login flow and redirect URLs.  `[Medium]`
+### Q67. Explain the magic-link login flow and redirect URLs.  `[Medium]`
 **Why interviewers ask this:** Passwordless auth flows.
 
 **Strong answer:**
@@ -1297,7 +1317,7 @@ I chose `flowType: 'implicit'` so a link requested on my laptop can be opened on
 
 ---
 
-### Q67. Your `.env` has `VITE_` variables. Are they secret?  `[Easy]`
+### Q68. Your `.env` has `VITE_` variables. Are they secret?  `[Easy]`
 **Why interviewers ask this:** A very common frontend misconception.
 
 **Strong answer:**
@@ -1310,7 +1330,7 @@ No. Vite replaces `import.meta.env.VITE_*` with the literal values **at build ti
 
 ---
 
-### Q68. What are the XSS risks with user-written text (notes, task edits)?  `[Medium]`
+### Q69. What are the XSS risks with user-written text (notes, task edits)?  `[Medium]`
 **Why interviewers ask this:** Web security basics.
 
 **Strong answer:**
@@ -1323,7 +1343,7 @@ User text is rendered as text in JSX, like `{t.title}` and `{item.text}`, and Re
 
 ---
 
-### Q69. What is CORS, and does it protect your API?  `[Medium]`
+### Q70. What is CORS, and does it protect your API?  `[Medium]`
 **Why interviewers ask this:** CORS is widely misunderstood.
 
 **Strong answer:**
@@ -1335,16 +1355,17 @@ CORS is a **browser** rule: a page on origin A can only read responses from orig
 
 ## j. Testing
 
-### Q70. What do your tests cover?  `[Easy]`
+### Q71. What do your tests cover?  `[Easy]`
 **Why interviewers ask this:** Testing discipline.
 
 **Strong answer:**
-52 Vitest tests in 5 files:
+60 Vitest tests in 6 files:
 
 | File | Tests | Covers |
 | --- | --- | --- |
 | `src/state/reducer.test.ts` | 11 | streak with skips, DSA rule, Sunday scaling, rollover (no duplicates, unopened days), drop/undo, overrides, v1 migration |
 | `src/lib/planModel.test.ts` | 8 | week numbers past 2026, user week override, placeholders, phases, heatmap range, streak and rollover across New Year |
+| `src/lib/hours.test.ts` | 8 | auto hours from ticked blocks, edited times, custom tasks, carried items, Sunday, manual override and reset, older saves |
 | `src/lib/dayCycle.test.ts` | 12 | sky phases at 02:00 / 08:00 / 12:30 / sunset / 21:00, minute-to-minute continuity, seasons, `?time=` parser, clips |
 | `src/lib/storage/sync.test.ts` | 14 | merge newer-wins, offline edit kept, outbox coalescing/batching/backoff/reload, two-device rollover, soft delete, first sign-in, plan sync |
 | `src/lib/storage/supabaseStore.test.ts` | 7 | uuid v5, row mapping round-trip, mocked client upsert, errors, missing-table handling |
@@ -1353,11 +1374,11 @@ CORS is a **browser** rule: a page on origin A can only read responses from orig
 
 ---
 
-### Q71. Unit vs integration vs e2e: what do you have?  `[Easy]`
+### Q72. Unit vs integration vs e2e: what do you have?  `[Easy]`
 **Why interviewers ask this:** Test pyramid.
 
 **Strong answer:**
-- **Unit:** pure functions (`reducer`, `dayStats`, `getSkyState`, `getWeek`, `toRow` / `fromRow`).
+- **Unit:** pure functions (`reducer`, `dayStats`, `effectiveHours`, `getSkyState`, `getWeek`, `toRow` / `fromRow`).
 - **Integration:** `sync.test.ts` wires the real `LocalStore`, `Outbox`, `SyncedStore` and `persistDiff` to an in-memory fake server (`src/lib/storage/testing.ts`), simulating two devices with separate storage.
 - **End-to-end:** none yet. Nothing clicks through the real UI in a browser. That's the gap I'd fill with Playwright.
 
@@ -1365,7 +1386,7 @@ CORS is a **browser** rule: a page on origin A can only read responses from orig
 
 ---
 
-### Q72. How did you mock Supabase and the clock?  `[Medium]`
+### Q73. How did you mock Supabase and the clock?  `[Medium]`
 **Why interviewers ask this:** Isolation techniques.
 
 **Strong answer:**
@@ -1380,7 +1401,7 @@ CORS is a **browser** rule: a page on origin A can only read responses from orig
 
 ---
 
-### Q73. How do you test a sync conflict?  `[Hard]`
+### Q74. How do you test a sync conflict?  `[Hard]`
 **Why interviewers ask this:** Testing distributed behaviour.
 
 **Strong answer:**
@@ -1397,21 +1418,21 @@ It also documents last-write-wins: B's java tick is lost. The opposite test ("a 
 
 ---
 
-### Q74. What would you add next?  `[Medium]`
+### Q75. What would you add next?  `[Medium]`
 **Why interviewers ask this:** Prioritisation.
 
 **Strong answer:**
 1. **Playwright e2e:** open `/app`, tick 7 blocks including DSA, assert "Counts for streak"; reload offline and check the data persists; refresh `/app/streak` for the SPA rewrite.
 2. **Component tests** with React Testing Library for `TaskForm` validation and the skip limit (the Skip button disabled after 3).
 3. **A GitHub Actions CI job** running `npm run lint`, `npm test` and `npm run build` on every pull request.
-4. **A test that a failing table doesn't block others** (with the outbox fix from Q62).
+4. **A test that a failing table doesn't block others** (with the outbox fix from Q63).
 5. **RLS tests:** a second user must get zero rows (pgTAP or a script with two JWTs).
 
 **Red flags to avoid:** "100% coverage" as the goal.
 
 ---
 
-### Q75. Why test pure functions first?  `[Easy]`
+### Q76. Why test pure functions first?  `[Easy]`
 **Why interviewers ask this:** Design-for-testability.
 
 **Strong answer:**
@@ -1423,7 +1444,7 @@ Pure functions (same input → same output, no side effects) need no mocks: `red
 
 ## k. Performance and frontend quality
 
-### Q76. Your build warns about a chunk over 500 kB. Why, and how do you fix it?  `[Medium]`
+### Q77. Your build warns about a chunk over 500 kB. Why, and how do you fix it?  `[Medium]`
 **Why interviewers ask this:** Bundle awareness.
 
 **Strong answer:**
@@ -1440,7 +1461,7 @@ Pure functions (same input → same output, no side effects) need no mocks: `red
 
 ---
 
-### Q77. What's the cost of the hero video and CSS filters?  `[Medium]`
+### Q78. What's the cost of the hero video and CSS filters?  `[Medium]`
 **Why interviewers ask this:** Rendering performance.
 
 **Strong answer:**
@@ -1453,7 +1474,7 @@ A full-screen `<video>` with `filter: brightness() saturate() contrast() sepia()
 
 ---
 
-### Q78. Is framer-motion expensive here?  `[Medium]`
+### Q79. Is framer-motion expensive here?  `[Medium]`
 **Why interviewers ask this:** Library cost awareness.
 
 **Strong answer:**
@@ -1463,7 +1484,7 @@ It adds bundle weight and runtime work. The heaviest spot is `src/landing/About.
 
 ---
 
-### Q79. What did you do for accessibility, and what's missing?  `[Medium]`
+### Q80. What did you do for accessibility, and what's missing?  `[Medium]`
 **Why interviewers ask this:** Inclusive design.
 
 **Strong answer:**
@@ -1487,7 +1508,7 @@ It adds bundle weight and runtime work. The heaviest spot is `src/landing/About.
 
 ---
 
-### Q80. Any wasteful work on each keystroke?  `[Medium]`
+### Q81. Any wasteful work on each keystroke?  `[Medium]`
 **Why interviewers ask this:** Spotting hidden costs.
 
 **Strong answer:**
@@ -1497,7 +1518,7 @@ Yes. Typing in the morning or night textarea dispatches `setText` per keystroke.
 
 ---
 
-### Q81. How would you measure frontend performance?  `[Easy]`
+### Q82. How would you measure frontend performance?  `[Easy]`
 **Why interviewers ask this:** Measure before optimising.
 
 **Strong answer:**
@@ -1514,7 +1535,7 @@ I'd measure on a mid-range Android phone with network throttling, since that's w
 
 ## l. Deployment and DevOps
 
-### Q82. What happens when you push to `main`?  `[Easy]`
+### Q83. What happens when you push to `main`?  `[Easy]`
 **Why interviewers ask this:** CI/CD understanding.
 
 **Strong answer:**
@@ -1529,7 +1550,7 @@ Deployments are immutable, so rolling back is just promoting the previous one. T
 
 ---
 
-### Q83. Why do env var changes need a redeploy?  `[Medium]`
+### Q84. Why do env var changes need a redeploy?  `[Medium]`
 **Why interviewers ask this:** Build-time vs runtime config.
 
 **Strong answer:**
@@ -1542,7 +1563,7 @@ Vite inlines `import.meta.env.VITE_*` into the JavaScript **during the build**. 
 
 ---
 
-### Q84. Preview vs production deployments?  `[Easy]`
+### Q85. Preview vs production deployments?  `[Easy]`
 **Why interviewers ask this:** Release workflow.
 
 **Strong answer:**
@@ -1552,7 +1573,7 @@ Vercel creates a **preview** deployment with its own URL for every branch or pul
 
 ---
 
-### Q85. What Supabase configuration does deployment need?  `[Easy]`
+### Q86. What Supabase configuration does deployment need?  `[Easy]`
 **Why interviewers ask this:** End-to-end ownership.
 
 **Strong answer:**
@@ -1567,7 +1588,7 @@ From `SETUP.md`:
 
 ---
 
-### Q86. What CI would you add?  `[Medium]`
+### Q87. What CI would you add?  `[Medium]`
 **Why interviewers ask this:** Engineering hygiene.
 
 **Strong answer:**
@@ -1595,7 +1616,7 @@ Then protect `main` so a pull request can't merge with failing checks, and later
 
 ---
 
-### Q87. How would you monitor production?  `[Medium]`
+### Q88. How would you monitor production?  `[Medium]`
 **Why interviewers ask this:** Operating software.
 
 **Strong answer:**
@@ -1611,7 +1632,7 @@ The first alert I'd want is "sync error rate > X%". That would have surfaced the
 
 ## m. System design (Hard)
 
-### Q88. "Turn Persist into a product for 1 million students."  `[Hard]`
+### Q89. "Turn Persist into a product for 1 million students."  `[Hard]`
 **Why interviewers ask this:** Can you scale your own project's ideas, with clear trade-offs?
 
 **Strong answer: a 30–40 minute script.**
@@ -1701,7 +1722,7 @@ flowchart LR
 
 ---
 
-### Q89. Deep dive: how exactly does versioned sync replace your timestamp merge?  `[Hard]`
+### Q90. Deep dive: how exactly does versioned sync replace your timestamp merge?  `[Hard]`
 **Why interviewers ask this:** A follow-up to see whether you understand your own weak spot.
 
 **Strong answer:**
@@ -1712,7 +1733,7 @@ update days set data = $data, version = version + 1, change_seq = nextval('chang
 where user_id = $uid and date = $date and version = $baseVersion;
 ```
 
-That's compare-and-set: if 0 rows are updated, it's a conflict, and the server returns its row. The client merges per field (union of ticks, latest counters by field) and pushes again with the new base version. Pulls use `change_seq > cursor`, which is monotonic, so there's no clock skew and no overlap window. Today Persist uses `updated_at` from two different clocks and accepts row-level lost updates (Q48), so this would be a real improvement.
+That's compare-and-set: if 0 rows are updated, it's a conflict, and the server returns its row. The client merges per field (union of ticks, latest counters by field) and pushes again with the new base version. Pulls use `change_seq > cursor`, which is monotonic, so there's no clock skew and no overlap window. Today Persist uses `updated_at` from two different clocks and accepts row-level lost updates (Q49), so this would be a real improvement.
 
 **Red flags to avoid:** "Use a distributed lock." Way too heavy for per-user data.
 
@@ -1720,7 +1741,7 @@ That's compare-and-set: if 0 rows are updated, it's a conflict, and the server r
 
 ## n. Low-level design (Hard)
 
-### Q90. Design the classes for the streak + task + carry-forward engine in Java.  `[Hard]`
+### Q91. Design the classes for the streak + task + carry-forward engine in Java.  `[Hard]`
 **Why interviewers ask this:** LLD rounds test OOP, SOLID and patterns, often in Java.
 
 **Strong answer:**
@@ -1856,7 +1877,7 @@ final class CarryForwardEngine {
 
 ---
 
-### Q91. How would you add a new rule, like "exam week counts at 50% with no DSA requirement"?  `[Medium]`
+### Q92. How would you add a new rule, like "exam week counts at 50% with no DSA requirement"?  `[Medium]`
 **Why interviewers ask this:** Open/closed principle in practice.
 
 **Strong answer:**
@@ -1870,7 +1891,7 @@ Create `ExamWeekRule implements DayRule` and teach `RuleSelector` to return it f
 
 > These stories come from this repo's real history. Only tell stories that happened to you. If you also have a Vercel deploy problem story, add it from your own memory; there's no record of one in the repo.
 
-### Q92. Tell me about a hard bug you fixed.  `[Medium]`
+### Q93. Tell me about a hard bug you fixed.  `[Medium]`
 **Why interviewers ask this:** Debugging process.
 
 **Strong answer (STAR):**
@@ -1888,20 +1909,20 @@ Create `ExamWeekRule implements DayRule` and teach `RuleSelector` to return it f
 
 ---
 
-### Q93. Tell me about a trade-off decision you made.  `[Medium]`
+### Q94. Tell me about a trade-off decision you made.  `[Medium]`
 **Why interviewers ask this:** Judgement under constraints.
 
 **Strong answer (STAR):**
 - **Situation:** I wanted my data on both laptop and phone, and eventually a Spring Boot backend for my resume.
 - **Task:** Get sync working soon without locking myself into a vendor.
 - **Action:** I used Supabase (Postgres, auth, RLS) but put it behind a `RemoteBackend` interface (`src/lib/storage/types.ts`), so only `supabaseStore.ts` knows about Supabase. For conflicts I chose last-write-wins per row, knowing it can lose a concurrent edit to the same day, because CRDTs would have taken weeks.
-- **Result:** Sync shipped with tests around it (21 today across `sync.test.ts` and `supabaseStore.test.ts`), and moving to Spring Boot is now a matter of implementing six methods. I documented the trade-off honestly (Q48).
+- **Result:** Sync shipped with tests around it (21 today across `sync.test.ts` and `supabaseStore.test.ts`), and moving to Spring Boot is now a matter of implementing six methods. I documented the trade-off honestly (Q49).
 
 **Red flags to avoid:** Presenting a choice without what it cost you.
 
 ---
 
-### Q94. How do you work fast with AI tools without losing quality?  `[Medium]`
+### Q95. How do you work fast with AI tools without losing quality?  `[Medium]`
 **Why interviewers ask this:** Increasingly common question, and it tests judgement.
 
 **Strong answer (STAR):**
@@ -1913,13 +1934,13 @@ Create `ExamWeekRule implements DayRule` and teach `RuleSelector` to return it f
   - For bigger features I asked for changes to stay uncommitted until I reviewed them.
   - I checked the tests themselves, by deliberately breaking the merge rule to see a test fail.
   - I questioned design details: the spec said uuid v5 of `date + taskId`, but that would collide across users on a global primary key, so we added the user id.
-- **Result:** 52 tests, no lost user data through a brand rename (I kept the old storage keys on purpose) and a v1 → v2 migration, and I can explain every module.
+- **Result:** 60 tests, no lost user data through a brand rename (I kept the old storage keys on purpose) and a v1 → v2 migration, and I can explain every module.
 
 **Red flags to avoid:** "The AI wrote it and it worked." Or hiding AI use.
 
 ---
 
-### Q95. Tell me about handling scope creep.  `[Medium]`
+### Q96. Tell me about handling scope creep.  `[Medium]`
 **Why interviewers ask this:** Prioritisation and focus.
 
 **Strong answer (STAR):**
@@ -1935,12 +1956,12 @@ Create `ExamWeekRule implements DayRule` and teach `RuleSelector` to return it f
 
 ---
 
-### Q96. What did you learn from this project?  `[Easy]`
+### Q97. What did you learn from this project?  `[Easy]`
 **Why interviewers ask this:** Reflection.
 
 **Strong answer:**
 1. **Offline-first is mostly about data modelling:** deterministic ids, tombstones and timestamps matter more than the UI.
-2. **Constraints encode assumptions.** My `reviews.week between 1 and 13` check silently became a bug when the plan became open-ended (Q62).
+2. **Constraints encode assumptions.** My `reviews.week between 1 and 13` check silently became a bug when the plan became open-ended (Q63).
 3. **Tests that can't fail are worthless.** I now check new tests by breaking the code on purpose.
 4. **Make configuration failures loud,** like the empty `.env`.
 5. **Small interfaces** (`RemoteBackend`, `TrackerStorage`) make big changes cheap.
@@ -2115,23 +2136,23 @@ How to answer any of these: **acknowledge → explain why it's that way → say 
 
 | # | Weak spot | Honest answer |
 | --- | --- | --- |
-| 1 | **`reviews.week` is checked to be 1–13** (`001_init.sql`), but the plan is now open-ended. From week 14, review upserts fail, and because `Outbox.flush` stops at the first failing table, `settings`, `plan_phases` and `plan_weeks` in the same flush wait too. | "I added the constraint when the plan was fixed, and didn't revisit it when I made the plan open-ended. Fix: migration `003` to relax it to `week >= 1`, and make the flush continue past a failing table, with a test." (Q62) |
-| 2 | **Last-write-wins per whole row**: concurrent offline edits to the same day lose one side. | "A deliberate simplicity trade-off for a single user. Next step: per-field merge of the `blocks` map; long-term, server versions with compare-and-set." (Q48, Q89) |
+| 1 | **`reviews.week` is checked to be 1–13** (`001_init.sql`), but the plan is now open-ended. From week 14, review upserts fail, and because `Outbox.flush` stops at the first failing table, `settings`, `plan_phases` and `plan_weeks` in the same flush wait too. | "I added the constraint when the plan was fixed, and didn't revisit it when I made the plan open-ended. Fix: migration `003` to relax it to `week >= 1`, and make the flush continue past a failing table, with a test." (Q63) |
+| 2 | **Last-write-wins per whole row**: concurrent offline edits to the same day lose one side. | "A deliberate simplicity trade-off for a single user. Next step: per-field merge of the `blocks` map; long-term, server versions with compare-and-set." (Q49, Q90) |
 | 3 | **Two clocks**: unsynced local edits carry the device time; server rows carry the server time. | "Clock skew can pick the wrong winner. Server-assigned versions remove it." |
 | 4 | **Single-user assumptions**: localStorage isn't namespaced by user; signing into another account on the same browser merges this device's data into it; data stays on the device after sign-out. | "Fine for my personal use; for a product I'd key local storage by user id and clear or switch on sign-out." |
-| 5 | **Bundle**: one 682 kB chunk (204 kB gzip). | "No code-splitting yet. Lazy routes, lazy supabase-js and `manualChunks`." (Q76) |
-| 6 | **No end-to-end tests, no component tests, no CI.** | "The core logic is unit and integration tested (52 tests); UI flows aren't. Playwright plus GitHub Actions is my next step." (Q74, Q86) |
+| 5 | **Bundle**: one 682 kB chunk (204 kB gzip). | "No code-splitting yet. Lazy routes, lazy supabase-js and `manualChunks`." (Q77) |
+| 6 | **No end-to-end tests, no component tests, no CI.** | "The core logic is unit and integration tested (60 tests); UI flows aren't. Playwright plus GitHub Actions is my next step." (Q75, Q87) |
 | 7 | **Re-render cost**: the context value is recreated each render, so every consumer re-renders on any change; the heatmap recomputes each day's tasks per cell. | "Fine at this size. I'd add selector subscriptions and memoise per-day stats." |
-| 8 | **Every keystroke** in notes writes the whole state to localStorage. | "Debounce the textarea or commit on blur; store per-record keys." (Q80) |
+| 8 | **Every keystroke** in notes writes the whole state to localStorage. | "Debounce the textarea or commit on blur; store per-record keys." (Q81) |
 | 9 | **No server-side validation**: RLS checks ownership, not content; rules like max 3 skips are enforced only in the client reducer. | "A determined user could write odd JSON to their own rows; it only affects themselves. A real API layer would validate." |
 | 10 | **Auth hardening**: implicit flow (tokens in the URL fragment), tokens in localStorage, no CSP header. | "I chose implicit for cross-device magic links. For a product: PKCE, a CSP in `vercel.json`, and shorter sessions." |
 | 11 | **Reset/Import never delete server rows.** | "A 'never delete' safety choice; a real 'delete my account data' would be a server-side operation." |
-| 12 | **Accessibility gaps**: modals have no focus trap or Escape-to-close; some grey text is low-contrast; the heatmap leans on colour. | "I covered tap targets, labels and reduced motion; focus management is next." (Q79) |
+| 12 | **Accessibility gaps**: modals have no focus trap or Escape-to-close; some grey text is low-contrast; the heatmap leans on colour. | "I covered tap targets, labels and reduced motion; focus management is next." (Q80) |
 | 13 | **Time zones**: day keys follow the device clock (travel can shift a late-night session); the sky uses Kolkata's sun on any visitor's clock. | "Store the user's home timezone and compute day keys there." |
-| 14 | **No monitoring**: sync errors only appear in the pill and the console. | "Add Sentry and an alert on sync error rate." (Q87) |
+| 14 | **No monitoring**: sync errors only appear in the pill and the console. | "Add Sentry and an alert on sync error rate." (Q88) |
 | 15 | **Retry without jitter; a 10 s pull overlap is a heuristic.** | "Add jitter; server change sequences remove the overlap." |
 | 16 | **Tombstones and soft-deleted rows grow forever.** | "Purge tombstones older than N days once all devices have synced past them." |
-| 17 | **Timetable edits don't detect overlapping blocks.** | "Easy fix: an interval-overlap check (P5)." |
+| 17 | **Timetable edits don't detect overlapping blocks**, so overlapping ticked blocks would also double-count auto hours. | "Easy fix: an interval-overlap check (P5), applied when saving an edit." |
 | 18 | **Code organisation**: `Today.tsx` is 960 lines; `weekScore` is exported from a page component (`Review.tsx`), which breaks fast refresh. | "I'd split Today into files per section and move `weekScore` to `src/lib`." |
 | 19 | **Hero video** from a third-party CDN with no poster image. | "Self-host, add a poster, pause off-screen." |
 
@@ -2206,27 +2227,28 @@ How to answer any of these: **acknowledge → explain why it's that way → say 
 
 **Day 3: data model and algorithms (2 h)**
 - [ ] Re-read `src/lib/streak.ts`, `src/lib/tasks.ts` and the `rollover` function in `src/state/reducer.ts`.
-- [ ] Answer Q23–Q37; write `currentStreak` and `longestStreak` on paper with complexity.
+- [ ] Re-read `src/lib/hours.ts` (auto vs manual hours).
+- [ ] Answer Q23–Q38; write `currentStreak` and `longestStreak` on paper with complexity.
 - [ ] Solve P1 and P4 in Java without looking.
 
 **Day 4: dates and sync (2 h)**
 - [ ] Re-read `src/lib/dates.ts`, `src/lib/storage/syncedStore.ts`, `outbox.ts`, `merge.ts`, `diff.ts`.
-- [ ] Answer Q38–Q53; explain last-write-wins failure modes and the 10-second overlap clearly.
+- [ ] Answer Q39–Q54; explain last-write-wins failure modes and the 10-second overlap clearly.
 - [ ] Solve P2 and P3.
 
 **Day 5: database and security (1.5 h)**
 - [ ] Re-read `supabase/migrations/001_init.sql` and `002_plan_extension.sql`.
-- [ ] Write all five SQL queries in Q61 from memory; run them in the Supabase SQL editor.
-- [ ] Answer Q54–Q69; explain RLS and anon vs service_role without notes.
+- [ ] Write all five SQL queries in Q62 from memory; run them in the Supabase SQL editor.
+- [ ] Answer Q55–Q70; explain RLS and anon vs service_role without notes.
 
 **Day 6: testing, performance, deployment (1.5 h)**
 - [ ] Run `npm test`, `npm run build`, `npm run lint`; read the build size output.
-- [ ] Answer Q70–Q87; sketch the lazy-routes fix and the CI YAML.
+- [ ] Answer Q71–Q88; sketch the lazy-routes fix and the CI YAML.
 - [ ] Solve P5.
 
 **Day 7: design rounds and mock interview (2 h)**
-- [ ] Do Q88 (system design) end to end in 35 minutes on a whiteboard, with numbers.
-- [ ] Do Q90 (LLD) in Java in 30 minutes.
-- [ ] Rehearse the STAR stories Q92–Q96 and the weak-spot answers in section 5.
+- [ ] Do Q89 (system design) end to end in 35 minutes on a whiteboard, with numbers.
+- [ ] Do Q91 (LLD) in Java in 30 minutes.
+- [ ] Rehearse the STAR stories Q93–Q97 and the weak-spot answers in section 5.
 - [ ] Rapid-fire round: all 30 in under 5 minutes.
 

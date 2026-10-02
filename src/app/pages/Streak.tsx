@@ -65,7 +65,7 @@ export default function Streak() {
 
   const tipDay = tip ? state.days[toKey(tip.date)] : undefined;
   const tipStats = tip ? statsFor(state, tip.date) : null;
-  const tipHours = tip ? effectiveHours(state, tip.date) : null;
+  const tipHours = tip ? effectiveHours(state, tip.date, Date.now()) : null;
 
   return (
     <div>
@@ -232,7 +232,7 @@ function HoursChart({ days, now }: { days: Date[]; now: Date }) {
   const W = 320;
   const H = 170;
   const pad = { l: 24, r: 8, t: 10, b: 24 };
-  const values = days.map((d) => effectiveHours(state, d));
+  const values = days.map((d) => effectiveHours(state, d, Date.now()));
   // 0–12 scale, growing in steps of 4 if a day goes beyond it.
   const max = Math.max(12, Math.ceil(Math.max(...values.map((v) => v.hours)) / 4) * 4);
   const ticks = Array.from({ length: max / 4 + 1 }, (_, i) => i * 4);

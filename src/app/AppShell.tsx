@@ -10,6 +10,7 @@ import { lastPlannedWeek, phaseFor } from '../lib/planModel';
 import { useStore } from '../state/store';
 import { SettingsModal } from './SettingsModal';
 import { SyncPill } from './SyncPill';
+import { RunningTitle } from './today/RunningTitle';
 
 function StatusStrip({ onSettings }: { onSettings: () => void }) {
   const { state } = useStore();
@@ -95,6 +96,7 @@ export function AppShell() {
       </main>
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <RunningTitle />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { addDays, differenceInCalendarDays } from 'date-fns';
-import { BLOCKS, PLAN_START, SUNDAY_TASKS } from '../data/plan';
+import { BLOCKS, CUSTOM_TASK_DEFAULT_MIN, PLAN_START, SUNDAY_TASKS } from '../data/plan';
 import type { CarriedItem, DayRecord, Override, TaskSubject, UserPlan } from '../state/types';
-import { fromKey, isSunday, toKey, weekNumberFor } from './dates';
+import { fromKey, isSunday, toKey, toMinutes, weekNumberFor } from './dates';
 import { EMPTY_PLAN, weekTexts } from './planModel';
 
 export type TaskKind = 'block' | 'sunday' | 'custom';
@@ -23,6 +23,15 @@ export interface DayTask {
   base?: Override;
   /** Planned blocks that are not carried when missed (Plan / Recall). */
   carry: boolean;
+  /** Target length in minutes (edited duration, else edited end − start, else the plan/default). */
+  durationMin: number;
+}
+
+/** end − start in minutes, or undefined when either is missing or out of order. */
+export function spanMinutes(start?: string, end?: string): number | undefined {
+  if (!start || !end) return undefined;
+  const m = toMinutes(end) - toMinutes(start);
+  return m > 0 ? m : undefined;
 }
 
 export interface DayTasks {
@@ -41,7 +50,7 @@ export function getDayTasks(day: DayRecord | undefined, date: Date, plan: UserPl
   if (isSunday(date)) {
     for (const t of SUNDAY_TASKS) {
       const o = overrides[t.id];
-      const base: Override = { text: t.name, subject: null };
+      const base: Override = { text: t.name, subject: null, durationMin: t.durationMin };
       planned.push({
         id: t.id,
         kind: 'sunday',
@@ -54,13 +63,14 @@ export function getDayTasks(day: DayRecord | undefined, date: Date, plan: UserPl
         edited: !!o,
         base,
         carry: true,
+        durationMin: o?.durationMin ?? spanMinutes(o?.start, o?.end) ?? t.durationMin,
       });
     }
   } else {
     const texts = weekTexts(plan, weekNumberFor(date));
     for (const b of BLOCKS) {
       const o = overrides[b.id];
-      const base: Override = { text: b.task(texts), start: b.start, end: b.end, subject: b.subject };
+      const base: Override = { text: b.task(texts), start: b.start, end: b.end, subject: b.subject, durationMin: spanMinutes(b.start, b.end) };
       planned.push({
         id: b.id,
         kind: 'block',
@@ -73,6 +83,7 @@ export function getDayTasks(day: DayRecord | undefined, date: Date, plan: UserPl
         edited: !!o,
         base,
         carry: b.carry,
+        durationMin: o?.durationMin ?? spanMinutes(o?.start ?? b.start, o?.end ?? b.end) ?? spanMinutes(b.start, b.end)!,
       });
     }
   }
@@ -88,6 +99,7 @@ export function getDayTasks(day: DayRecord | undefined, date: Date, plan: UserPl
     done: c.done,
     edited: false,
     carry: true,
+    durationMin: c.durationMin ?? spanMinutes(c.start, c.end) ?? CUSTOM_TASK_DEFAULT_MIN,
   }));
 
   const all = [...planned, ...custom];

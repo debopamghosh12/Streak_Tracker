@@ -92,7 +92,15 @@ export class LocalStore implements TrackerStorage {
   }
 
   saveSettings(settings: SyncedSettings, at = nowIso()): string {
-    this.state = { ...this.state, rolledThrough: settings.rolledThrough };
+    this.state = {
+      ...this.state,
+      rolledThrough: settings.rolledThrough,
+      settings: {
+        ...this.state.settings,
+        ...(settings.todayMode ? { todayMode: settings.todayMode } : {}),
+        ...(settings.defaultSlots ? { defaultSlots: settings.defaultSlots } : {}),
+      },
+    };
     return this.stamp('settings', 'settings', at);
   }
 
@@ -161,7 +169,11 @@ export class LocalStore implements TrackerStorage {
     }
     for (const [key, doneOn] of Object.entries(s.topicsDone)) out.push({ table: 'topics_done', key, doneOn });
     for (const [key, review] of Object.entries(s.reviews)) out.push({ table: 'reviews', key, review });
-    out.push({ table: 'settings', key: 'settings', settings: { version: 2, rolledThrough: s.rolledThrough } });
+    out.push({
+      table: 'settings',
+      key: 'settings',
+      settings: { version: 2, rolledThrough: s.rolledThrough, todayMode: s.settings.todayMode, defaultSlots: s.settings.defaultSlots },
+    });
     for (const phase of Object.values(s.plan.phases)) out.push({ table: 'plan_phases', key: phase.id, phase, deleted: false });
     for (const week of Object.values(s.plan.weeks)) out.push({ table: 'plan_weeks', key: String(week.weekNumber), week, deleted: false });
     return out;

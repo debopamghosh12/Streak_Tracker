@@ -57,7 +57,12 @@ export function persistDiff(prev: TrackerState, next: TrackerState, sink: Sink) 
     }
   }
 
-  if (prev.rolledThrough !== next.rolledThrough) {
-    sink.saveSettings({ version: 2, rolledThrough: next.rolledThrough });
+  if (prev.rolledThrough !== next.rolledThrough || prev.settings !== next.settings) {
+    sink.saveSettings({
+      version: 2,
+      rolledThrough: next.rolledThrough,
+      todayMode: next.settings.todayMode,
+      defaultSlots: next.settings.defaultSlots,
+    });
   }
 }

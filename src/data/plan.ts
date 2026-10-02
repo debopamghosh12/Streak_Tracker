@@ -215,15 +215,20 @@ export const DSA_BLOCKS: BlockId[] = ['dsa1', 'dsa2'];
 export interface SundayTask {
   id: string;
   name: string;
+  /** Default target length in minutes. */
+  durationMin: number;
 }
 
 export const SUNDAY_TASKS: SundayTask[] = [
-  { id: 'contest', name: 'LeetCode weekly contest (8:00 AM IST)' },
-  { id: 'redo', name: 'Redo every problem failed this week' },
-  { id: 'mock', name: '1 full aptitude mock' },
-  { id: 'cs-revise', name: "Revise the week's CS skeletons out loud" },
-  { id: 'review', name: 'Weekly review with Claude' },
+  { id: 'contest', name: 'LeetCode weekly contest (8:00 AM IST)', durationMin: 90 },
+  { id: 'redo', name: 'Redo every problem failed this week', durationMin: 90 },
+  { id: 'mock', name: '1 full aptitude mock', durationMin: 60 },
+  { id: 'cs-revise', name: "Revise the week's CS skeletons out loud", durationMin: 30 },
+  { id: 'review', name: 'Weekly review with Claude', durationMin: 30 },
 ];
+
+/** Default length for a custom task without times. */
+export const CUSTOM_TASK_DEFAULT_MIN = 30;
 
 /* ---------- Rules & targets ---------- */
 

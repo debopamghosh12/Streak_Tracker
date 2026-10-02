@@ -57,7 +57,7 @@ export function weekScore(state: TrackerState, n: number) {
   });
   const score = Math.round((rows.filter((r) => r.met).length / rows.length) * 100);
   const daysCounted = days.filter((d) => statsFor(state, d).counts).length;
-  const hours = Math.round(keys.reduce((s, k) => s + effectiveHours(state, k).hours, 0) * 100) / 100;
+  const hours = Math.round(keys.reduce((s, k) => s + effectiveHours(state, k, Date.now()).hours, 0) * 100) / 100;
   return { rows, score, review, dsa, apps, daysCounted, hours, phase: w.phase };
 }
 

@@ -6,9 +6,11 @@ export type TaskSubject = SubjectId | null;
 /** Per-date edit of a planned block or Sunday task. The base plan never changes. */
 export interface Override {
   text: string;
-  start?: string; // HH:mm
+  start?: string; // HH:mm (older edits; duration is derived from these when durationMin is absent)
   end?: string;
   subject: TaskSubject;
+  /** Target length in minutes. */
+  durationMin?: number;
 }
 
 export interface CustomTask {
@@ -18,6 +20,38 @@ export interface CustomTask {
   end?: string;
   subject: TaskSubject;
   done: boolean;
+  durationMin?: number;
+}
+
+export type TodayMode = 'flow' | 'slots';
+
+/** A study slot the user defined for a day (Slots mode). */
+export interface Slot {
+  id: string;
+  start: string; // HH:mm
+  end: string; // HH:mm, after start
+  label?: string;
+}
+
+export interface TimerSession {
+  start: number; // epoch ms
+  end: number;
+}
+
+/**
+ * Tracked time for one task on one day. Elapsed is always computed from timestamps
+ * (baseMs + closed sessions + now − runningSince), so it survives reloads, sleep and background tabs.
+ */
+export interface TaskTimer {
+  sessions: TimerSession[];
+  /** Set while the stopwatch runs (epoch ms). */
+  runningSince?: number;
+  /** When the current run was started (kept across a midnight split), for "running since 9:12 PM". */
+  runStartedAt?: number;
+  /** Time set by hand with "Edit time"; sessions after the edit add to it. */
+  baseMs?: number;
+  /** Display only: the task's time on earlier days when a run crossed midnight (not counted in this day's hours). */
+  priorMs?: number;
 }
 
 export interface CarriedItem {
@@ -52,6 +86,14 @@ export interface DayRecord {
   customTasks: CustomTask[];
   /** Planned tasks the user pushed to tomorrow via Delete → "Move to tomorrow". Still count as unfinished today. */
   movedOut: string[];
+  /** Task ids in the user's order for this day (missing = plan order). */
+  order?: string[];
+  /** This day's study slots (missing = the default slots from settings). */
+  slots?: Slot[];
+  /** taskId -> slotId (Slots mode). Tasks not listed are "Unplaced". */
+  placement: Record<string, string>;
+  /** taskId -> tracked time. */
+  timers: Record<string, TaskTimer>;
 }
 
 /** Topic text per subject for a week; null = not set yet. */
@@ -104,13 +146,22 @@ export interface TrackerState {
   reviews: Record<string, ReviewRecord>;
   /** User weeks and phases layered over the base 13-week plan. */
   plan: UserPlan;
-  settings: { version: 2 };
+  settings: AppSettings;
+}
+
+/** Synced preferences (settings row). */
+export interface AppSettings {
+  version: 2;
+  todayMode: TodayMode;
+  /** New days start with these slots, empty. */
+  defaultSlots: Slot[];
 }
 
 export type Action =
-  | { type: 'toggleBlock'; date: string; id: string }
-  | { type: 'toggleSunday'; date: string; id: string }
-  | { type: 'toggleCustom'; date: string; id: string }
+  /** `at` (epoch ms): when given, ticking a task done stops its running timer at that moment. */
+  | { type: 'toggleBlock'; date: string; id: string; at?: number }
+  | { type: 'toggleSunday'; date: string; id: string; at?: number }
+  | { type: 'toggleCustom'; date: string; id: string; at?: number }
   | { type: 'setCounter'; date: string; field: CounterField; value: number }
   | { type: 'resetHours'; date: string }
   | { type: 'setText'; date: string; field: 'morning' | 'night'; value: string }
@@ -126,13 +177,24 @@ export type Action =
   | { type: 'addCustom'; date: string; task: CustomTask }
   | { type: 'updateCustom'; date: string; id: string; patch: Partial<CustomTask> }
   | { type: 'deleteCustom'; date: string; id: string }
-  | { type: 'toggleCarried'; id: string; date: string }
+  | { type: 'toggleCarried'; id: string; date: string; at?: number }
   | { type: 'updateCarried'; id: string; patch: Partial<Pick<CarriedItem, 'text' | 'subject'>> }
   | { type: 'moveCarried'; id: string; date: string }
   | { type: 'dropCarried'; id: string }
   | { type: 'restoreCarried'; item: CarriedItem; index: number }
   | { type: 'rollover'; today: string }
   | { type: 'freeze'; date: string }
+  | { type: 'setTodayMode'; mode: TodayMode }
+  /** Reorder / move between containers. slotId: undefined = keep placement, null = Unplaced. beforeId null = end of the container. */
+  | { type: 'moveTask'; date: string; id: string; slotId?: string | null; beforeId: string | null }
+  | { type: 'upsertSlot'; date: string; slot: Slot }
+  | { type: 'deleteSlot'; date: string; slotId: string }
+  | { type: 'setDayLayout'; date: string; slots: Slot[]; placement: Record<string, string> }
+  | { type: 'saveDefaultSlots'; slots: Slot[] }
+  | { type: 'timerStart'; date: string; id: string; at: number }
+  | { type: 'timerPause'; date: string; id: string; at: number }
+  /** "Edit time": set the tracked time by hand (0 = reset). Keeps running if it was running. */
+  | { type: 'timerSetTime'; date: string; id: string; ms: number; at: number }
   | { type: 'upsertPlanWeek'; week: UserWeek }
   | { type: 'deletePlanWeek'; weekNumber: number }
   | { type: 'upsertPlanPhase'; phase: UserPhase }

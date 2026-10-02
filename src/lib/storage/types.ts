@@ -1,9 +1,12 @@
-import type { CarriedItem, DayRecord, ReviewRecord, TrackerState, UserPhase, UserWeek } from '../../state/types';
+import type { CarriedItem, DayRecord, ReviewRecord, Slot, TodayMode, TrackerState, UserPhase, UserWeek } from '../../state/types';
 
 /** Synced per-user settings (one row per user). */
 export interface SyncedSettings {
   version: 2;
   rolledThrough: string;
+  /** Absent in rows written by older app versions: the local value is kept. */
+  todayMode?: TodayMode;
+  defaultSlots?: Slot[];
 }
 
 /**

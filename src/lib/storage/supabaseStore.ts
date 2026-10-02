@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { v5 as uuidv5 } from 'uuid';
-import { emptyReview, sanitizeCarried, sanitizeDay, sanitizeUserPhase, sanitizeUserWeek } from '../../state/reducer';
+import { emptyReview, sanitizeCarried, sanitizeDay, sanitizeSettings, sanitizeUserPhase, sanitizeUserWeek } from '../../state/reducer';
 import type { ReviewRecord } from '../../state/types';
 import { supabase } from '../supabase';
 import type { PulledRecord, RemoteBackend, RemoteUser, SyncRecord, TableName } from './types';
@@ -135,9 +135,20 @@ export function fromRow(table: TableName, row: Row): PulledRecord | null {
       return isObj(row.data) ? { table, key, review: { ...emptyReview(), ...(row.data as Partial<ReviewRecord>) }, updatedAt } : null;
     case 'settings': {
       const data = isObj(row.data) ? row.data : {};
-      return isDate(data.rolledThrough)
-        ? { table, key: 'settings', settings: { version: 2, rolledThrough: data.rolledThrough }, updatedAt }
-        : null;
+      if (!isDate(data.rolledThrough)) return null;
+      const extra = sanitizeSettings(data);
+      return {
+        table,
+        key: 'settings',
+        settings: {
+          version: 2,
+          rolledThrough: data.rolledThrough,
+          // Only pass fields the row actually has, so rows from older app versions don't reset them.
+          ...('todayMode' in data ? { todayMode: extra.todayMode } : {}),
+          ...('defaultSlots' in data ? { defaultSlots: extra.defaultSlots } : {}),
+        },
+        updatedAt,
+      };
     }
     case 'plan_phases': {
       const phase = sanitizeUserPhase({

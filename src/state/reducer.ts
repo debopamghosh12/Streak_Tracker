@@ -1,9 +1,26 @@
 /** Pure state logic: no React, no storage. */
 import { SUBJECTS } from '../data/plan';
 import { fromKey, toKey } from '../lib/dates';
-import { datesToRoll, makeCarried, unfinishedTasks, yesterdayKey } from '../lib/tasks';
+import { datesToRoll, makeCarried, tomorrowKey, unfinishedTasks, yesterdayKey } from '../lib/tasks';
+import { effectiveSlots, findRunning, getDayItems, trackedMs, validateSlot } from '../lib/dayItems';
 import type { SubjectId } from '../data/plan';
-import type { Action, CarriedItem, CustomTask, DayRecord, Override, ReviewRecord, TaskSubject, TrackerState, UserPhase, UserPlan, UserWeek, WeekTopics } from './types';
+import type {
+  Action,
+  AppSettings,
+  CarriedItem,
+  CustomTask,
+  DayRecord,
+  Override,
+  ReviewRecord,
+  Slot,
+  TaskSubject,
+  TaskTimer,
+  TrackerState,
+  UserPhase,
+  UserPlan,
+  UserWeek,
+  WeekTopics,
+} from './types';
 
 export const todayKey = () => toKey(new Date());
 
@@ -22,7 +39,11 @@ export const emptyDay = (): DayRecord => ({
   skipped: {},
   customTasks: [],
   movedOut: [],
+  placement: {},
+  timers: {},
 });
+
+export const defaultSettings = (): AppSettings => ({ version: 2, todayMode: 'flow', defaultSlots: [] });
 
 export const emptyReview = (): ReviewRecord => ({ javaShipped: false, aiBuilt: false, well: '', slipped: '', change: '' });
 
@@ -35,7 +56,7 @@ export const initialState = (today: string): TrackerState => ({
   rolledThrough: yesterdayKey(today),
   reviews: {},
   plan: { weeks: {}, phases: {} },
-  settings: { version: 2 },
+  settings: defaultSettings(),
 });
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -45,14 +66,70 @@ const SUBJECT_IDS = new Set<string>(SUBJECTS.map((s) => s.id));
 const asSubject = (s: unknown): TaskSubject => (typeof s === 'string' && SUBJECT_IDS.has(s) ? (s as TaskSubject) : null);
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 
+const asDuration = (v: unknown): number | undefined => {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 5 && n <= 24 * 60 ? n : undefined;
+};
+
 function sanitizeOverride(v: unknown): Override | null {
   if (!isObj(v)) return null;
-  return {
+  const o: Override = {
     text: str(v.text),
     start: isTime(v.start) ? v.start : undefined,
     end: isTime(v.end) ? v.end : undefined,
     subject: asSubject(v.subject),
   };
+  const dur = asDuration(v.durationMin);
+  if (dur) o.durationMin = dur;
+  return o;
+}
+
+export function sanitizeSlots(v: unknown): Slot[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: Slot[] = [];
+  for (const x of v) {
+    if (!isObj(x) || typeof x.id !== 'string' || !x.id || !isTime(x.start) || !isTime(x.end)) continue;
+    const slot: Slot = { id: x.id, start: x.start, end: x.end };
+    const label = str(x.label).trim().slice(0, 40);
+    if (label) slot.label = label;
+    if (!validateSlot(out, slot)) out.push(slot); // drop invalid or overlapping slots
+  }
+  return out;
+}
+
+function sanitizeTimers(v: unknown): Record<string, TaskTimer> {
+  const out: Record<string, TaskTimer> = {};
+  if (!isObj(v)) return out;
+  const num = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : null);
+  for (const [id, t] of Object.entries(v)) {
+    if (!isObj(t)) continue;
+    const sessions = (Array.isArray(t.sessions) ? t.sessions : [])
+      .filter(isObj)
+      .map((x) => ({ start: num(x.start), end: num(x.end) }))
+      .filter((x): x is { start: number; end: number } => x.start != null && x.end != null && x.end >= x.start);
+    const timer: TaskTimer = { sessions };
+    const running = num(t.runningSince);
+    if (running != null) {
+      timer.runningSince = running;
+      const startedAt = num(t.runStartedAt);
+      if (startedAt != null) timer.runStartedAt = startedAt;
+    }
+    const nonNeg = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : null);
+    const base = nonNeg(t.baseMs);
+    if (base != null) timer.baseMs = base;
+    const prior = nonNeg(t.priorMs);
+    if (prior) timer.priorMs = prior;
+    out[id] = timer;
+  }
+  return out;
+}
+
+export function sanitizeSettings(v: unknown): AppSettings {
+  const s = defaultSettings();
+  if (!isObj(v)) return s;
+  if (v.todayMode === 'flow' || v.todayMode === 'slots') s.todayMode = v.todayMode;
+  s.defaultSlots = sanitizeSlots(v.defaultSlots) ?? [];
+  return s;
 }
 
 export function sanitizeDay(v: Record<string, unknown>): DayRecord {
@@ -82,10 +159,19 @@ export function sanitizeDay(v: Record<string, unknown>): DayRecord {
         end: isTime(c.end) ? c.end : undefined,
         subject: asSubject(c.subject),
         done: !!c.done,
+        ...(asDuration(c.durationMin) ? { durationMin: asDuration(c.durationMin) } : {}),
       }),
     );
   }
   d.movedOut = Array.isArray(v.movedOut) ? v.movedOut.filter((x): x is string => typeof x === 'string') : [];
+  // Flow / Slots fields (absent in older saves: plan order, default slots, nothing placed, no timers).
+  if (Array.isArray(v.order)) d.order = v.order.filter((x): x is string => typeof x === 'string');
+  const slots = sanitizeSlots(v.slots);
+  if (slots) d.slots = slots;
+  if (isObj(v.placement)) {
+    d.placement = Object.fromEntries(Object.entries(v.placement).filter(([, x]) => typeof x === 'string')) as Record<string, string>;
+  }
+  d.timers = sanitizeTimers(v.timers);
   return d;
 }
 
@@ -193,7 +279,7 @@ export function rollover(state: TrackerState, today: string): TrackerState {
     rolledThrough = yesterday;
     changed = true;
   }
-  return changed ? { ...state, carried, rolledThrough } : state;
+  return splitAtMidnight(changed ? { ...state, carried, rolledThrough } : state, today);
 }
 
 /**
@@ -217,7 +303,7 @@ export function sanitize(raw: unknown, today: string): TrackerState {
 
   const carryDropped = Array.isArray(raw.carryDropped) ? raw.carryDropped.filter((x): x is string => typeof x === 'string') : [];
   const plan = sanitizePlan(raw.plan);
-  const state: TrackerState = { ...base, days, reviews, topicsDone, carryDropped, plan };
+  const state: TrackerState = { ...base, days, reviews, topicsDone, carryDropped, plan, settings: sanitizeSettings(raw.settings) };
 
   if (Array.isArray(raw.carried)) {
     state.carried = raw.carried.map(sanitizeCarried).filter((c): c is CarriedItem => !!c);
@@ -251,18 +337,108 @@ const without = <T,>(rec: Record<string, T>, key: string) => {
   return next;
 };
 
+/** Closes a running timer at `at` (no-op if it isn't running). */
+function closeTimer(timers: Record<string, TaskTimer>, id: string, at: number): Record<string, TaskTimer> {
+  const t = timers[id];
+  if (t?.runningSince == null) return timers;
+  const { runningSince, ...rest } = t;
+  delete rest.runStartedAt;
+  return { ...timers, [id]: { ...rest, sessions: [...t.sessions, { start: runningSince, end: Math.max(runningSince, at) }] } };
+}
+
+/**
+ * A stopwatch left running across midnight: close the session at 00:00 local on its day and
+ * continue it on the next day — on the carried item if the task was carried forward, else on the
+ * same task id. Repeats for every midnight up to `today`. Never stops or trims the timer.
+ */
+function splitAtMidnight(state: TrackerState, today: string): TrackerState {
+  const running = findRunning(state.days);
+  if (!running || running.date >= today) return state;
+  let next = state;
+  let { date, id, timer } = running;
+  while (date < today && timer.runningSince != null) {
+    const nextDate = tomorrowKey(date);
+    const boundary = fromKey(nextDate).getTime(); // 00:00 local on the next day
+    const start = timer.runningSince;
+    const startedAt = timer.runStartedAt ?? start;
+    const { runningSince: _r, runStartedAt: _s, ...rest } = timer;
+    void _r;
+    void _s;
+    const closed: TaskTimer = { ...rest, sessions: start < boundary ? [...timer.sessions, { start, end: boundary }] : timer.sessions };
+    next = withDay(next, date, (d) => ({ ...d, timers: { ...d.timers, [id]: closed } }));
+
+    const nextId = id.includes(':') ? id : next.carried.some((c) => c.id === `${date}:${id}`) ? `${date}:${id}` : id;
+    const existing = next.days[nextDate]?.timers?.[nextId];
+    const continued: TaskTimer = {
+      sessions: existing?.sessions ?? [],
+      ...(existing?.baseMs != null ? { baseMs: existing.baseMs } : {}),
+      priorMs: (closed.priorMs ?? 0) + trackedMs(closed),
+      runningSince: Math.max(start, boundary),
+      runStartedAt: startedAt,
+    };
+    next = withDay(next, nextDate, (d) => ({ ...d, timers: { ...d.timers, [nextId]: continued } }));
+    date = nextDate;
+    id = nextId;
+    timer = continued;
+  }
+  return next;
+}
+
+/** Ticking a task done stops its timer (when the action carries a timestamp). */
+function stopIfDone(d: DayRecord, id: string, becomesDone: boolean | undefined, at: number | undefined): DayRecord {
+  if (!becomesDone || at == null || d.timers?.[id]?.runningSince == null) return d;
+  return { ...d, timers: closeTimer(d.timers, id, at) };
+}
+
+function stopAllTimers(state: TrackerState, at: number): TrackerState {
+  let next = state;
+  for (const [date, day] of Object.entries(state.days)) {
+    for (const [id, t] of Object.entries(day.timers ?? {})) {
+      if (t.runningSince != null) next = withDay(next, date, (d) => ({ ...d, timers: closeTimer(d.timers, id, at) }));
+    }
+  }
+  return next;
+}
+
+/**
+ * Reorders a task within the day's single order (shared by both modes) and optionally moves it
+ * to a slot (slotId string), the Unplaced tray (null), or keeps its placement (undefined).
+ * beforeId: insert before that task; null = after the last task of the target container.
+ */
+function moveTask(state: TrackerState, date: string, id: string, slotId: string | null | undefined, beforeId: string | null): TrackerState {
+  const ids = getDayItems(state, date).items.map((i) => i.id);
+  if (!ids.includes(id)) return state;
+  const day = state.days[date] ?? emptyDay();
+  const placement = { ...day.placement };
+  if (slotId === null) delete placement[id];
+  else if (slotId !== undefined) placement[id] = slotId;
+
+  const order = ids.filter((x) => x !== id);
+  let at = order.length;
+  if (beforeId && order.includes(beforeId)) at = order.indexOf(beforeId);
+  else if (slotId !== undefined) {
+    const valid = new Set(effectiveSlots(state, date).map((sl) => sl.id));
+    const inTarget = (x: string) => (slotId === null ? !(placement[x] && valid.has(placement[x])) : placement[x] === slotId);
+    const last = order.reduce((acc, x, i) => (inTarget(x) ? i : acc), -1);
+    if (last >= 0) at = last + 1;
+  }
+  order.splice(at, 0, id);
+  return withDay(state, date, (d) => ({ ...d, order, placement }));
+}
+
 export function reducer(state: TrackerState, action: Action): TrackerState {
   switch (action.type) {
     case 'toggleBlock':
-      return withDay(state, action.date, (d) => ({ ...d, blocks: { ...d.blocks, [action.id]: !d.blocks[action.id] } }));
+      return withDay(state, action.date, (d) =>
+        stopIfDone({ ...d, blocks: { ...d.blocks, [action.id]: !d.blocks[action.id] } }, action.id, !d.blocks[action.id], action.at),
+      );
     case 'toggleSunday':
-      return withDay(state, action.date, (d) => ({
-        ...d,
-        sundayTasks: { ...d.sundayTasks, [action.id]: !d.sundayTasks[action.id] },
-      }));
+      return withDay(state, action.date, (d) =>
+        stopIfDone({ ...d, sundayTasks: { ...d.sundayTasks, [action.id]: !d.sundayTasks[action.id] } }, action.id, !d.sundayTasks[action.id], action.at),
+      );
     case 'toggleCustom':
       return withDay(state, action.date, (d) => ({
-        ...d,
+        ...stopIfDone(d, action.id, !d.customTasks.find((c) => c.id === action.id)?.done, action.at),
         customTasks: d.customTasks.map((c) => (c.id === action.id ? { ...c, done: !c.done } : c)),
       }));
     case 'setCounter':
@@ -327,13 +503,17 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
       }));
     case 'deleteCustom':
       return withDay(state, action.date, (d) => ({ ...d, customTasks: d.customTasks.filter((c) => c.id !== action.id) }));
-    case 'toggleCarried':
-      return {
+    case 'toggleCarried': {
+      const item = state.carried.find((c) => c.id === action.id);
+      const next = {
         ...state,
         carried: state.carried.map((c) =>
           c.id === action.id ? (c.done ? { ...c, done: false, completedOn: undefined } : { ...c, done: true, completedOn: action.date }) : c,
         ),
       };
+      const running = next.days[action.date]?.timers?.[action.id]?.runningSince != null;
+      return item && !item.done && running ? withDay(next, action.date, (d) => stopIfDone(d, action.id, true, action.at)) : next;
+    }
     case 'updateCarried':
       return { ...state, carried: state.carried.map((c) => (c.id === action.id ? { ...c, ...action.patch } : c)) };
     case 'moveCarried':
@@ -376,6 +556,53 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
       const changed = Object.values(state.plan.weeks).some((w) => w.phaseId === action.id);
       return { ...state, plan: { weeks: changed ? weeks : state.plan.weeks, phases: without(state.plan.phases, action.id) } };
     }
+    case 'setTodayMode':
+      return state.settings.todayMode === action.mode ? state : { ...state, settings: { ...state.settings, todayMode: action.mode } };
+    case 'moveTask':
+      return moveTask(state, action.date, action.id, action.slotId, action.beforeId);
+    case 'upsertSlot': {
+      const slots = effectiveSlots(state, action.date);
+      if (validateSlot(slots, action.slot)) return state; // overlapping or invalid: rejected
+      const exists = slots.some((s) => s.id === action.slot.id);
+      const next = exists ? slots.map((s) => (s.id === action.slot.id ? action.slot : s)) : [...slots, action.slot];
+      return withDay(state, action.date, (d) => ({ ...d, slots: next }));
+    }
+    case 'deleteSlot': {
+      const slots = effectiveSlots(state, action.date).filter((s) => s.id !== action.slotId);
+      return withDay(state, action.date, (d) => ({
+        ...d,
+        slots,
+        placement: Object.fromEntries(Object.entries(d.placement).filter(([, sid]) => sid !== action.slotId)),
+      }));
+    }
+    case 'setDayLayout': {
+      const slots = sanitizeSlots(action.slots) ?? [];
+      return withDay(state, action.date, (d) => ({ ...d, slots, placement: { ...action.placement } }));
+    }
+    case 'saveDefaultSlots':
+      return { ...state, settings: { ...state.settings, defaultSlots: sanitizeSlots(action.slots) ?? [] } };
+    case 'timerStart': {
+      // One timer at a time, across all days: pause whatever is running first.
+      const paused = stopAllTimers(state, action.at);
+      return withDay(paused, action.date, (d) => {
+        const t = d.timers[action.id] ?? { sessions: [] };
+        return { ...d, timers: { ...d.timers, [action.id]: { ...t, runningSince: action.at, runStartedAt: action.at } } };
+      });
+    }
+    case 'timerPause':
+      return withDay(state, action.date, (d) => ({ ...d, timers: closeTimer(d.timers, action.id, action.at) }));
+    case 'timerSetTime':
+      return withDay(state, action.date, (d) => {
+        const t = d.timers[action.id];
+        const running = t?.runningSince != null;
+        // The set value replaces everything tracked so far; a running stopwatch keeps going from it.
+        const next: TaskTimer = { sessions: [], baseMs: Math.max(0, Math.round(action.ms)) };
+        if (running) {
+          next.runningSince = action.at;
+          next.runStartedAt = t!.runStartedAt ?? t!.runningSince;
+        }
+        return { ...d, timers: { ...d.timers, [action.id]: next } };
+      });
     case 'freeze':
       return withDay(state, action.date, (d) => ({ ...d, frozen: true }));
     case 'updateReview': {

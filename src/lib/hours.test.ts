@@ -31,14 +31,14 @@ describe('auto hours', () => {
     expect(autoHours(s, MON)).toBe(2);
   });
 
-  it('counts ticked custom tasks only when they have a start and end', () => {
+  it('counts ticked custom tasks by their duration (time span, else the 30-minute default)', () => {
     const s = run(
       initialState(MON),
       { type: 'addCustom', date: MON, task: { id: 'c-timed', text: 'Mock test', start: '18:00', end: '19:15', subject: 'apt', done: true } },
       { type: 'addCustom', date: MON, task: { id: 'c-untimed', text: 'Read notes', subject: 'cs', done: true } },
       { type: 'addCustom', date: MON, task: { id: 'c-open', text: 'Not done', start: '07:00', end: '08:00', subject: 'cs', done: false } },
     );
-    expect(autoHours(s, MON)).toBe(1.25);
+    expect(autoHours(s, MON)).toBe(1.75); // 1 h 15 m + 30 m default; the unticked one adds nothing
   });
 
   it('counts a carried item on the day it is completed, with its original block duration', () => {
@@ -54,7 +54,7 @@ describe('auto hours', () => {
     expect(autoHours(s, MON)).toBe(0); // the original day doesn't change
   });
 
-  it('adds nothing for Sunday tasks (even with edited times), but counts carried items finished on Sunday', () => {
+  it('counts Sunday tasks by their default or edited durations, and carried items finished on Sunday', () => {
     // Start on Fri 9 Oct (rolled through Thu), so Sunday's rollover carries Fri and Sat forward.
     let s = run(
       initialState('2026-10-09'),
@@ -63,12 +63,12 @@ describe('auto hours', () => {
       { type: 'setOverride', dates: [SUN], id: 'mock', override: { text: 'Mock', start: '10:00', end: '12:00', subject: 'apt' } },
       { type: 'toggleSunday', date: SUN, id: 'mock' },
     );
-    expect(autoHours(s, SUN)).toBe(0);
+    expect(autoHours(s, SUN)).toBe(5); // contest 90 + redo 90 + mock edited to 10:00–12:00 (120)
 
     s = run(s, { type: 'rollover', today: SUN }); // Fri 9 – Sat 10 Oct were left unfinished
     const java = s.carried.find((c) => c.sourceBlockId === 'java')!;
     s = run(s, { type: 'toggleCarried', id: java.id, date: SUN });
-    expect(autoHours(s, SUN)).toBe(2.5);
+    expect(autoHours(s, SUN)).toBe(7.5); // + carried Java block (2.5 h)
   });
 });
 

@@ -37,6 +37,8 @@ export interface FocusSettings {
   autoPause: boolean;
   /** Small self-view (off by default). */
   preview: boolean;
+  /** Live camera (mirrored) as the pop-out's background instead of plain black (on by default). */
+  pipCamera: boolean;
   calibration: Calibration | null;
 }
 
@@ -48,6 +50,7 @@ export const DEFAULT_FOCUS_SETTINGS: FocusSettings = {
   awayMin: 2,
   autoPause: false,
   preview: false,
+  pipCamera: true,
   calibration: null,
 };
 

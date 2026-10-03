@@ -1,5 +1,5 @@
-import { Coffee, Crosshair, Eye, PictureInPicture2, Pause } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Camera, CameraOff, Coffee, Crosshair, Eye, PictureInPicture2, Pause } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { format } from 'date-fns';
 import { displayMs, findRunning, formatStopwatch, getDayItems } from '../../lib/dayItems';
@@ -7,6 +7,7 @@ import { useStore } from '../../state/store';
 import { loadFocusRuntime } from './FocusHost';
 import { updateFocusSettings, useFocusSettings } from './focusSettings';
 import { FOCUS_COLORS, FOCUS_LABELS, setFocusStatus, useFocusStatus } from './focusStatus';
+import { attachPreview, detachPreview, pipBackground } from './pipPreview';
 import { focusSupport } from './support';
 
 const TEXT = { color: '#E1E0CC' };
@@ -120,34 +121,81 @@ function PopOut() {
   );
 }
 
+const SHADOW = { textShadow: '0 1px 3px rgba(0,0,0,0.6)' };
+
 function PipView({ win }: { win: Window }) {
   const { state, dispatch } = useStore();
   const status = useFocusStatus();
+  const settings = useFocusSettings();
   const [now, setNow] = useState(Date.now());
+  const videoRef = useRef<HTMLVideoElement>(null);
+  /** The stream whose playback failed (a new stream gets a fresh try). */
+  const [failedFor, setFailedFor] = useState<MediaStream | null>(null);
+  const reducedMotion = useMemo(() => win.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false, [win]);
   useEffect(() => {
     // The pop-out window is visible, so its own timer isn't throttled.
     const id = win.setInterval(() => setNow(Date.now()), 1000);
     return () => win.clearInterval(id);
   }, [win]);
+
+  const stream = status.stream;
+  const bg = pipBackground({ cameraOn: settings.pipCamera, stream, reducedMotion, failed: !!stream && failedFor === stream });
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || bg !== 'camera' || !stream) return;
+    let live = true;
+    void attachPreview(video, stream).then((ok) => {
+      if (!ok && live) setFailedFor(stream);
+    });
+    // Stopwatch paused / feature off (stream → null), camera toggled off, or pop-out closed.
+    return () => {
+      live = false;
+      detachPreview(video);
+    };
+  }, [bg, stream]);
+
   const running = findRunning(state.days);
   const title = running ? (getDayItems(state, running.date).items.find((i) => i.id === running.id)?.title ?? 'Task') : 'No timer running';
   const color = status.state && status.phase === 'watching' ? FOCUS_COLORS[status.state] : '#444';
   return (
-    <div className="h-screen flex flex-col justify-center gap-2 px-4" style={TEXT}>
-      <p className="text-xs text-gray-400 truncate">{title}</p>
-      <p className="text-3xl tabular-nums">{running ? formatStopwatch(displayMs(running.timer, now)) : '—'}</p>
-      <div className="flex items-center gap-2 text-xs">
-        <span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
-        <span className="text-gray-300">{status.warning?.text ?? (status.phase === 'paused' ? 'Focus watch paused' : status.state ? FOCUS_LABELS[status.state] : 'Watching…')}</span>
-        {running && (
-          <button
-            type="button"
-            onClick={() => dispatch({ type: 'timerPause', date: running.date, id: running.id, at: Date.now() })}
-            className="ml-auto min-h-[36px] px-3 rounded-full bg-primary text-black inline-flex items-center gap-1"
-          >
-            <Pause className="w-3.5 h-3.5" /> Pause
-          </button>
-        )}
+    <div className="relative h-screen overflow-hidden border-2 bg-black" style={{ ...TEXT, borderColor: color }}>
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        aria-hidden
+        onError={() => stream && setFailedFor(stream)}
+        className="absolute inset-0 w-full h-full object-cover"
+        style={{ transform: 'scaleX(-1)', display: bg === 'camera' ? 'block' : 'none' }}
+      />
+      {bg === 'camera' && <div className="absolute inset-0 bg-gradient-to-b from-black/55 to-black/75" aria-hidden />}
+      <button
+        type="button"
+        onClick={() => updateFocusSettings({ pipCamera: !settings.pipCamera })}
+        aria-pressed={settings.pipCamera}
+        aria-label={settings.pipCamera ? 'Plain black background' : 'Camera background'}
+        title={settings.pipCamera ? 'Switch to a plain black background' : 'Show the camera as the background'}
+        className="absolute top-1 right-1 z-10 w-8 h-8 rounded-full flex items-center justify-center text-gray-300 hover:text-primary bg-black/30"
+      >
+        {settings.pipCamera ? <Camera className="w-3.5 h-3.5" /> : <CameraOff className="w-3.5 h-3.5" />}
+      </button>
+      <div className="relative h-full flex flex-col justify-center gap-2 px-4">
+        <p className="text-xs text-gray-400 truncate pr-8" style={SHADOW}>{title}</p>
+        <p className="text-3xl tabular-nums" style={SHADOW}>{running ? formatStopwatch(displayMs(running.timer, now)) : '—'}</p>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
+          <span className="text-gray-300">{status.warning?.text ?? (status.phase === 'paused' ? 'Focus watch paused' : status.state ? FOCUS_LABELS[status.state] : 'Watching…')}</span>
+          {running && (
+            <button
+              type="button"
+              onClick={() => dispatch({ type: 'timerPause', date: running.date, id: running.id, at: Date.now() })}
+              className="ml-auto min-h-[36px] px-3 rounded-full bg-primary text-black inline-flex items-center gap-1"
+            >
+              <Pause className="w-3.5 h-3.5" /> Pause
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -206,6 +254,10 @@ export function FocusSettingsSection() {
           <div className={row}>
             <span>Pause the stopwatch if I'm away for more than 5 minutes</span>
             {toggle(settings.autoPause, 'Auto-pause when away', () => updateFocusSettings({ autoPause: !settings.autoPause }))}
+          </div>
+          <div className={row}>
+            <span>Camera background in the pop-out window</span>
+            {toggle(settings.pipCamera, 'Camera background in the pop-out', () => updateFocusSettings({ pipCamera: !settings.pipCamera }))}
           </div>
           <div className={row}>
             <span>Show a small self-view</span>

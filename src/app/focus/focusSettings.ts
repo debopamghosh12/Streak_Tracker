@@ -24,6 +24,7 @@ function load(): FocusSettings {
     awayMin: clamp(raw.awayMin, 1, 15, DEFAULT_FOCUS_SETTINGS.awayMin),
     autoPause: raw.autoPause === true,
     preview: raw.preview === true,
+    pipCamera: raw.pipCamera !== false,
     calibration:
       c && [c.yaw, c.pitch, c.noseRel].every((x) => typeof x === 'number' && Number.isFinite(x)) ? { yaw: c.yaw, pitch: c.pitch, noseRel: c.noseRel } : null,
   };

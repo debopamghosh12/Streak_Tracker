@@ -11,6 +11,7 @@ import { useStore } from '../state/store';
 import { SettingsModal } from './SettingsModal';
 import { SyncPill } from './SyncPill';
 import { RunningTitle } from './today/RunningTitle';
+import { FocusHost } from './focus/FocusHost';
 
 function StatusStrip({ onSettings }: { onSettings: () => void }) {
   const { state } = useStore();
@@ -97,6 +98,7 @@ export function AppShell() {
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <RunningTitle />
+      <FocusHost />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { fromKey, toKey, weekDays } from './dates';
 import { effectiveHours } from './hours';
 import { getWeek } from './planModel';
 import { statsFor } from './streak';
+import { rangeFocus } from './focus/dayFocus';
 
 export interface Row {
   subject: SubjectId;
@@ -51,5 +52,7 @@ export function weekScore(state: TrackerState, n: number, now?: number) {
   const score = Math.round((rows.filter((r) => r.met).length / rows.length) * 100);
   const daysCounted = days.filter((d) => statsFor(state, d).counts).length;
   const hours = Math.round(keys.reduce((s, k) => s + effectiveHours(state, k, now).hours, 0) * 100) / 100;
-  return { rows, score, review, dsa, apps, daysCounted, hours, phase: w.phase };
+  // Focus watch numbers (shown next to hours; never part of the score or the streak).
+  const focus = rangeFocus(state, days);
+  return { rows, score, review, dsa, apps, daysCounted, hours, focus, phase: w.phase };
 }

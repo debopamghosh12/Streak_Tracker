@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Copy, Minus, Plus, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Suspense, lazy, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { PageTitle } from '../../components/PageTitle';
@@ -15,7 +15,12 @@ import { currentStreak, statsFor } from '../../lib/streak';
 import { emptyDay, useStore } from '../../state/store';
 import type { DayRecord, Override, TaskSubject } from '../../state/types';
 import { TaskBoard } from '../today/TaskBoard';
+import { dayFocus, focusLine } from '../../lib/focus/dayFocus';
 import { TEXT, subjectLabel } from '../today/shared';
+import { useFocusSettings } from '../focus/focusSettings';
+
+// Loaded only when Focus watch is on.
+const FocusBanner = lazy(() => import('../focus/FocusUI').then((m) => ({ default: m.FocusBanner })));
 import { DayDetails } from '../DayDetails';
 import { shouldRemindDsa } from '../../lib/dayDetails';
 import { browserKV } from '../../lib/storage/kv';
@@ -45,6 +50,7 @@ export default function Today() {
   const cleared = carriedToday.filter((c) => c.done);
   const pending = carriedToday.filter((c) => !c.done);
   const hours = effectiveHours(state, key, now.getTime());
+  const focusOn = useFocusSettings().enabled;
   const [detail, setDetail] = useState<string | null>(null);
   const [dismissedFor, setDismissedFor] = useState<string | null>(() => browserKV.getItem(DSA_REMINDER_KEY));
   const remind = shouldRemindDsa(state, key, dismissedFor);
@@ -88,6 +94,8 @@ export default function Today() {
       `Time tracked: ${tracked.length ? `\n${tracked.map((t) => `- ${t.item.title}: ${formatStopwatch(t.trackedMs)} of ${formatMinutes(t.item.durationMin)}`).join('\n')}` : '—'}`,
       `Topics covered: ${day.topicsCovered.length ? day.topicsCovered.join('; ') : '—'}`,
     ];
+    const focus = dayFocus(day);
+    if (focus) parts.push(`${focusLine(focus)} (hours are stopwatch time)`);
     if (edited.length) {
       parts.push(
         `Edited tasks:\n${edited
@@ -116,6 +124,12 @@ export default function Today() {
       )}
 
       <div className="space-y-4">
+        {focusOn && (
+          <Suspense fallback={null}>
+            <FocusBanner />
+          </Suspense>
+        )}
+
         <Card>
           <SectionLabel
             right={

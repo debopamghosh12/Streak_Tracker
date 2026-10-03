@@ -11,6 +11,7 @@ import { MoveMenu, type MoveOption } from './MoveMenu';
 import { TaskForm, type FormValues } from './TaskForm';
 import { EditButton, Expand, TEXT, fieldCls, iconBtn, smallBtn, subjectColor } from './shared';
 import { useStopwatchNow } from './stopwatchClock';
+import { FocusEyeButton, FocusLive } from '../focus/FocusRow';
 
 const chip = 'text-[10px] px-1.5 py-0.5 rounded-full border';
 
@@ -115,8 +116,9 @@ export function ItemRow({
 
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             <span className={`${chip} text-gray-300 border-white/10 tabular-nums`}>{formatMinutes(item.durationMin)}</span>
-            {hasTime && timer && <StopwatchReadout timer={timer} targetMs={item.durationMin * 60_000} />}
+            {hasTime && timer && <StopwatchReadout timer={timer} targetMs={item.durationMin * 60_000} taskId={item.id} />}
             <span className="ml-auto flex items-center -my-1">
+              {!item.moved && running && <FocusEyeButton />}
               {!item.moved && (
                 <button
                   type="button"
@@ -224,7 +226,7 @@ export function ItemRow({
  * while running), so a running timer re-renders just this readout. Elapsed is computed from the
  * saved timestamps every time, so it's right after a reload, sleep or a background tab.
  */
-function StopwatchReadout({ timer, targetMs }: { timer: TaskTimer; targetMs: number }) {
+function StopwatchReadout({ timer, targetMs, taskId }: { timer: TaskTimer; targetMs: number; taskId: string }) {
   const running = timer.runningSince != null;
   const tick = useStopwatchNow(running);
   const elapsed = displayMs(timer, running ? Math.max(tick, timer.runningSince!) : undefined);
@@ -243,6 +245,7 @@ function StopwatchReadout({ timer, targetMs }: { timer: TaskTimer; targetMs: num
         />
       </span>
       {over > 0 && <span className="text-amber-300/80">+{formatStopwatch(over)} over</span>}
+      {running && <FocusLive taskId={taskId} timer={timer} />}
       {running && since != null && <span className="text-gray-500">running since {format(since, 'h:mm a')}</span>}
     </span>
   );

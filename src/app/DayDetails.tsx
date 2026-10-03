@@ -10,6 +10,7 @@ import { effectiveHours, formatHours } from '../lib/hours';
 import { getWeek } from '../lib/planModel';
 import { carriedAwayFrom, statsFor } from '../lib/streak';
 import { getDayTasks } from '../lib/tasks';
+import { dayFocus, focusLine } from '../lib/focus/dayFocus';
 import { emptyDay, useStore } from '../state/store';
 import type { DayEdit } from '../state/types';
 
@@ -117,6 +118,7 @@ function Panel({ dateKey, today, onClose }: { dateKey: string; today: string; on
             <p className="text-xs text-gray-400">
               Hours: <span style={TEXT}>{formatHours(hours.hours)}</span> ({hours.source}) · DSA {day.dsa} · Applications {day.apps}
             </p>
+            {dayFocus(day) && <p className="text-xs text-gray-400">{focusLine(dayFocus(day)!)}</p>}
             <ul className="space-y-1" aria-label="Tasks (read-only)">
               {tasks.map((t) => {
                 const away = carriedAway.has(t.id);

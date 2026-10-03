@@ -9,6 +9,7 @@ import { weekNumberFor, weekRangeLabel } from '../../lib/dates';
 import { getWeek, lastShownWeek } from '../../lib/planModel';
 import { copyText, useNow } from '../../lib/hooks';
 import { weekScore } from '../../lib/weekScore';
+import { focusLine } from '../../lib/focus/dayFocus';
 import { useStore } from '../../state/store';
 import type { ReviewRecord } from '../../state/types';
 
@@ -19,7 +20,7 @@ export default function Review() {
   const toast = useToast();
   const now = useNow();
   const [week, setWeek] = useState(() => weekNumberFor(now));
-  const { rows, score, review, daysCounted, hours, phase } = weekScore(state, week, Date.now());
+  const { rows, score, review, daysCounted, hours, focus, phase } = weekScore(state, week, Date.now());
   // No cap: up to the current week and any later planned week.
   const maxWeek = lastShownWeek(state.plan, now);
 
@@ -32,7 +33,7 @@ export default function Review() {
   const copy = async () => {
     const lines = [
       `Weekly review — Week ${week} (${weekRangeLabel(week)}, Phase ${phase.name})`,
-      `Score: ${score}% of targets met · ${daysCounted}/7 days counted · ${hours} hrs studied`,
+      `Score: ${score}% of targets met · ${daysCounted}/7 days counted · ${hours} hrs studied${focus ? ` · ${focusLine(focus)}` : ''}`,
       '',
       ...rows.map((r) => `${r.met ? '✓' : '✗'} ${SUBJECT_BY_ID[r.subject].name}: ${r.actual} (target: ${r.target})`),
       '',
@@ -93,7 +94,7 @@ export default function Review() {
               <span className="italic font-serif text-primary/70"> · {score}%</span>
             </p>
             <p className="text-xs text-gray-500">
-              {daysCounted}/7 days counted · {hours} hrs studied · Phase {phase.name}
+              {daysCounted}/7 days counted · {hours} hrs studied{focus ? ` · ${focusLine(focus)}` : ''} · Phase {phase.name}
             </p>
           </div>
         </div>

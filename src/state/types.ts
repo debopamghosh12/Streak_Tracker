@@ -33,9 +33,19 @@ export interface Slot {
   label?: string;
 }
 
+/** Focus watch numbers for a session: seconds per category + phone pickups. Never images. */
+export interface SessionFocus {
+  focused: number;
+  distracted: number;
+  away: number;
+  pickups: number;
+}
+
 export interface TimerSession {
   start: number; // epoch ms
   end: number;
+  /** Focus watch stats for this session (only when Focus watch was on). */
+  focus?: SessionFocus;
 }
 
 /**
@@ -52,6 +62,10 @@ export interface TaskTimer {
   baseMs?: number;
   /** Display only: the task's time on earlier days when a run crossed midnight (not counted in this day's hours). */
   priorMs?: number;
+  /** Focus stats of the running session (moved into the session when it closes). */
+  focusRun?: SessionFocus;
+  /** Focus stats kept when "Edit time" replaced the sessions. */
+  focusKept?: SessionFocus;
 }
 
 export interface CarriedItem {
@@ -205,6 +219,8 @@ export type Action =
   | { type: 'timerPause'; date: string; id: string; at: number }
   /** "Edit time": set the tracked time by hand (0 = reset). Keeps running if it was running. */
   | { type: 'timerSetTime'; date: string; id: string; ms: number; at: number }
+  /** Focus watch: add measured seconds / pickups to the task's running session (or its last session). */
+  | { type: 'focusAdd'; date: string; id: string; delta: SessionFocus }
   | { type: 'upsertPlanWeek'; week: UserWeek }
   | { type: 'deletePlanWeek'; weekNumber: number }
   | { type: 'upsertPlanPhase'; phase: UserPhase }

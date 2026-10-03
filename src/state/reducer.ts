@@ -12,6 +12,7 @@ import type {
   DayRecord,
   Override,
   ReviewRecord,
+  SessionFocus,
   Slot,
   TaskSubject,
   TaskTimer,
@@ -97,6 +98,20 @@ export function sanitizeSlots(v: unknown): Slot[] | undefined {
   return out;
 }
 
+/** Focus numbers only (seconds and a count); anything else is dropped. */
+function sanitizeFocus(v: unknown): SessionFocus | null {
+  if (!isObj(v)) return null;
+  const n = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : 0);
+  return { focused: n(v.focused), distracted: n(v.distracted), away: n(v.away), pickups: Math.round(n(v.pickups)) };
+}
+
+const addFocus = (a: SessionFocus | undefined, b: SessionFocus): SessionFocus => ({
+  focused: (a?.focused ?? 0) + b.focused,
+  distracted: (a?.distracted ?? 0) + b.distracted,
+  away: (a?.away ?? 0) + b.away,
+  pickups: (a?.pickups ?? 0) + b.pickups,
+});
+
 function sanitizeTimers(v: unknown): Record<string, TaskTimer> {
   const out: Record<string, TaskTimer> = {};
   if (!isObj(v)) return out;
@@ -105,9 +120,18 @@ function sanitizeTimers(v: unknown): Record<string, TaskTimer> {
     if (!isObj(t)) continue;
     const sessions = (Array.isArray(t.sessions) ? t.sessions : [])
       .filter(isObj)
-      .map((x) => ({ start: num(x.start), end: num(x.end) }))
-      .filter((x): x is { start: number; end: number } => x.start != null && x.end != null && x.end >= x.start);
+      .map((x) => {
+        const session: { start: number | null; end: number | null; focus?: SessionFocus } = { start: num(x.start), end: num(x.end) };
+        const f = sanitizeFocus(x.focus);
+        if (f) session.focus = f;
+        return session;
+      })
+      .filter((x): x is { start: number; end: number; focus?: SessionFocus } => x.start != null && x.end != null && x.end >= x.start);
     const timer: TaskTimer = { sessions };
+    const run = sanitizeFocus(t.focusRun);
+    if (run) timer.focusRun = run;
+    const kept = sanitizeFocus(t.focusKept);
+    if (kept) timer.focusKept = kept;
     const running = num(t.runningSince);
     if (running != null) {
       timer.runningSince = running;
@@ -342,9 +366,10 @@ const without = <T,>(rec: Record<string, T>, key: string) => {
 function closeTimer(timers: Record<string, TaskTimer>, id: string, at: number): Record<string, TaskTimer> {
   const t = timers[id];
   if (t?.runningSince == null) return timers;
-  const { runningSince, ...rest } = t;
+  const { runningSince, focusRun, ...rest } = t;
   delete rest.runStartedAt;
-  return { ...timers, [id]: { ...rest, sessions: [...t.sessions, { start: runningSince, end: Math.max(runningSince, at) }] } };
+  const session = { start: runningSince, end: Math.max(runningSince, at), ...(focusRun ? { focus: focusRun } : {}) };
+  return { ...timers, [id]: { ...rest, sessions: [...t.sessions, session] } };
 }
 
 /**
@@ -362,10 +387,11 @@ function splitAtMidnight(state: TrackerState, today: string): TrackerState {
     const boundary = fromKey(nextDate).getTime(); // 00:00 local on the next day
     const start = timer.runningSince;
     const startedAt = timer.runStartedAt ?? start;
-    const { runningSince: _r, runStartedAt: _s, ...rest } = timer;
+    const { runningSince: _r, runStartedAt: _s, focusRun, ...rest } = timer;
     void _r;
     void _s;
-    const closed: TaskTimer = { ...rest, sessions: start < boundary ? [...timer.sessions, { start, end: boundary }] : timer.sessions };
+    const closedSession = { start, end: boundary, ...(focusRun ? { focus: focusRun } : {}) };
+    const closed: TaskTimer = { ...rest, sessions: start < boundary ? [...timer.sessions, closedSession] : timer.sessions };
     next = withDay(next, date, (d) => ({ ...d, timers: { ...d.timers, [id]: closed } }));
 
     const nextId = id.includes(':') ? id : next.carried.some((c) => c.id === `${date}:${id}`) ? `${date}:${id}` : id;
@@ -612,6 +638,16 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
         return { ...d, timers: { ...d.timers, [action.id]: { ...t, runningSince: action.at, runStartedAt: action.at } } };
       });
     }
+    case 'focusAdd':
+      return withDay(state, action.date, (d) => {
+        const t = d.timers[action.id];
+        if (!t) return d;
+        if (t.runningSince != null) return { ...d, timers: { ...d.timers, [action.id]: { ...t, focusRun: addFocus(t.focusRun, action.delta) } } };
+        if (t.sessions.length === 0) return d;
+        // Paused just before the flush: add to the session that just closed.
+        const sessions = t.sessions.map((x, i) => (i === t.sessions.length - 1 ? { ...x, focus: addFocus(x.focus, action.delta) } : x));
+        return { ...d, timers: { ...d.timers, [action.id]: { ...t, sessions } } };
+      });
     case 'timerPause':
       return withDay(state, action.date, (d) => ({ ...d, timers: closeTimer(d.timers, action.id, action.at) }));
     case 'timerSetTime':
@@ -620,6 +656,10 @@ export function reducer(state: TrackerState, action: Action): TrackerState {
         const running = t?.runningSince != null;
         // The set value replaces everything tracked so far; a running stopwatch keeps going from it.
         const next: TaskTimer = { sessions: [], baseMs: Math.max(0, Math.round(action.ms)) };
+        // Focus numbers survive a manual time edit.
+        const kept = (t?.sessions ?? []).reduce<SessionFocus | undefined>((acc, x) => (x.focus ? addFocus(acc, x.focus) : acc), t?.focusKept);
+        if (kept) next.focusKept = kept;
+        if (t?.focusRun) next.focusRun = t.focusRun;
         if (running) {
           next.runningSince = action.at;
           next.runStartedAt = t!.runStartedAt ?? t!.runningSince;

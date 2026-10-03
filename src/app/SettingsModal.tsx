@@ -4,6 +4,10 @@ import { useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { todayKey, useStore, useSync } from '../state/store';
 import { useToast } from '../components/ui';
+import { Suspense, lazy } from 'react';
+
+// Loaded when the settings modal opens.
+const FocusSettingsSection = lazy(() => import('./focus/FocusUI').then((m) => ({ default: m.FocusSettingsSection })));
 
 export function SettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { dispatch, exportAll } = useStore();
@@ -127,6 +131,9 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
               )}
               {error && <p className="text-xs text-red-400/70 pt-1">{error}</p>}
             </div>
+            <Suspense fallback={null}>
+              <FocusSettingsSection />
+            </Suspense>
             {signedIn && (
               <div className="mt-4 pt-4 border-t border-white/5 space-y-2" style={{ color: '#E1E0CC' }}>
                 <p className="text-xs text-gray-400 flex items-center gap-2">

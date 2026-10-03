@@ -118,7 +118,7 @@ export function ItemRow({
             <span className={`${chip} text-gray-300 border-white/10 tabular-nums`}>{formatMinutes(item.durationMin)}</span>
             {hasTime && timer && <StopwatchReadout timer={timer} targetMs={item.durationMin * 60_000} taskId={item.id} />}
             <span className="ml-auto flex items-center -my-1">
-              {!item.moved && running && <FocusEyeButton />}
+              {!item.moved && (!item.done || running) && <FocusEyeButton />}
               {!item.moved && (
                 <button
                   type="button"

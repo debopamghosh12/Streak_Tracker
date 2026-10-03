@@ -6,7 +6,11 @@ import { updateFocusSettings, useFocusSettings } from './focusSettings';
 import { FOCUS_COLORS, FOCUS_LABELS, setFocusStatus, useFocusStatus } from './focusStatus';
 import { focusSupport } from './support';
 
-/** Eye button next to the stopwatch controls: turns Focus watch on/off (first time: explainer). */
+/**
+ * Eye button next to the play button on every unticked row: turns Focus watch on/off (first time:
+ * explainer + camera permission). With no stopwatch running it only arms the feature; watching
+ * starts when a stopwatch starts.
+ */
 export function FocusEyeButton() {
   const settings = useFocusSettings();
   const support = useMemo(focusSupport, []);
@@ -17,7 +21,7 @@ export function FocusEyeButton() {
       type="button"
       aria-pressed={on}
       aria-label={on ? 'Turn Focus watch off' : 'Turn Focus watch on'}
-      title={on ? 'Focus watch is on' : 'Focus watch (camera, on-device)'}
+      title={on ? 'Focus watch is on — it watches while a stopwatch runs' : 'Focus watch (camera, on-device)'}
       onClick={() => {
         if (!settings.explained) setFocusStatus({ explainOpen: true });
         else updateFocusSettings({ enabled: !on });

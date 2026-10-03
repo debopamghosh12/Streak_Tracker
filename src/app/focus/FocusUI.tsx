@@ -8,6 +8,7 @@ import { loadFocusRuntime } from './FocusHost';
 import { updateFocusSettings, useFocusSettings } from './focusSettings';
 import { FOCUS_COLORS, FOCUS_LABELS, setFocusStatus, useFocusStatus } from './focusStatus';
 import { attachPreview, detachPreview, pipBackground } from './pipPreview';
+import { copyStylesToPip, type DocLike } from './pipStyles';
 import { focusSupport } from './support';
 
 const TEXT = { color: '#E1E0CC' };
@@ -101,11 +102,11 @@ function PopOut() {
   const open = async () => {
     try {
       const w = await api.requestWindow({ width: 320, height: 190 });
-      // Copy styles so the window looks like Persist.
-      for (const node of document.head.querySelectorAll('style, link[rel="stylesheet"]')) w.document.head.appendChild(node.cloneNode(true));
       w.document.body.style.cssText = 'margin:0;background:#000';
       w.addEventListener('pagehide', () => setWin(null));
-      setWin(w);
+      // Copy the page's CSS so the window looks like Persist; render only once it's in place.
+      await copyStylesToPip(document as unknown as DocLike, w.document as unknown as DocLike);
+      if (!w.closed) setWin(w);
     } catch {
       /* user dismissed or not allowed */
     }
@@ -129,8 +130,12 @@ function PipView({ win }: { win: Window }) {
   const settings = useFocusSettings();
   const [now, setNow] = useState(Date.now());
   const videoRef = useRef<HTMLVideoElement>(null);
-  /** The stream whose playback failed (a new stream gets a fresh try). */
-  const [failedFor, setFailedFor] = useState<MediaStream | null>(null);
+  /** The stream whose preview failed, and why (a new stream gets a fresh try). */
+  const [failure, setFailure] = useState<{ stream: MediaStream; reason: string } | null>(null);
+  const fail = (s: MediaStream, reason: string) => {
+    console.warn('[Persist] Camera preview unavailable:', reason);
+    setFailure({ stream: s, reason });
+  };
   const reducedMotion = useMemo(() => win.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false, [win]);
   useEffect(() => {
     // The pop-out window is visible, so its own timer isn't throttled.
@@ -139,13 +144,14 @@ function PipView({ win }: { win: Window }) {
   }, [win]);
 
   const stream = status.stream;
-  const bg = pipBackground({ cameraOn: settings.pipCamera, stream, reducedMotion, failed: !!stream && failedFor === stream });
+  const failed = !!stream && failure?.stream === stream;
+  const bg = pipBackground({ cameraOn: settings.pipCamera, stream, reducedMotion, failed });
   useEffect(() => {
     const video = videoRef.current;
     if (!video || bg !== 'camera' || !stream) return;
     let live = true;
-    void attachPreview(video, stream).then((ok) => {
-      if (!ok && live) setFailedFor(stream);
+    void attachPreview(video, stream).then((r) => {
+      if (!r.ok && live) fail(stream, r.reason);
     });
     // Stopwatch paused / feature off (stream → null), camera toggled off, or pop-out closed.
     return () => {
@@ -165,9 +171,9 @@ function PipView({ win }: { win: Window }) {
         muted
         playsInline
         aria-hidden
-        onError={() => stream && setFailedFor(stream)}
-        className="absolute inset-0 w-full h-full object-cover"
-        style={{ transform: 'scaleX(-1)', display: bg === 'camera' ? 'block' : 'none' }}
+        onError={() => stream && fail(stream, `video error ${videoRef.current?.error?.code ?? ''}`.trim())}
+        // Inline so it still fills the window even if a stylesheet didn't make it into the pop-out.
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', display: bg === 'camera' ? 'block' : 'none' }}
       />
       {bg === 'camera' && <div className="absolute inset-0 bg-gradient-to-b from-black/55 to-black/75" aria-hidden />}
       <button
@@ -182,6 +188,7 @@ function PipView({ win }: { win: Window }) {
       </button>
       <div className="relative h-full flex flex-col justify-center gap-2 px-4">
         <p className="text-xs text-gray-400 truncate pr-8" style={SHADOW}>{title}</p>
+        {failed && settings.pipCamera && !reducedMotion && <p className="text-[10px] text-gray-500 -mt-1">Camera preview unavailable</p>}
         <p className="text-3xl tabular-nums" style={SHADOW}>{running ? formatStopwatch(displayMs(running.timer, now)) : '—'}</p>
         <div className="flex items-center gap-2 text-xs">
           <span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />

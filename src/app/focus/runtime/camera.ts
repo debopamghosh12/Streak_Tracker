@@ -2,8 +2,8 @@ import type { Frame, FrameSource } from './controller';
 
 /** Low-resolution, low-frame-rate camera: enough for a sample every 2 s. Video never leaves the device. */
 export async function openCamera(): Promise<MediaStream> {
-  // Dev-only hook used for automated background-tab testing with a synthetic camera.
-  const fake = import.meta.env.DEV ? (window as Window & { __persistFakeCamera?: () => MediaStream }).__persistFakeCamera : undefined;
+  // Test hook (dev, or a local build with VITE_FOCUS_TEST_HOOKS=1) for automated tests with a synthetic camera.
+  const fake = import.meta.env.DEV || import.meta.env.VITE_FOCUS_TEST_HOOKS === '1' ? (window as Window & { __persistFakeCamera?: () => MediaStream }).__persistFakeCamera : undefined;
   if (fake) return fake();
   return navigator.mediaDevices.getUserMedia({
     audio: false,

@@ -24,7 +24,7 @@ const fakeVideo = (fail = false) => {
 
 function setup(settings: Partial<FocusSettings> = {}) {
   let now = 1_000_000;
-  const tracks = [{ stop: vi.fn() }];
+  const tracks = [{ stop: vi.fn(), clone: vi.fn(), readyState: 'live' }];
   const stream = { getTracks: () => tracks, getVideoTracks: () => tracks } as unknown as MediaStream;
   const status: Partial<FocusStatus> = {};
   const detect = vi.fn(() => ({ face: { yaw: 0, pitch: 0, noseRel: 0.5 }, phoneScore: 0 }));
@@ -92,13 +92,37 @@ describe('pop-out camera background', () => {
   });
 
   it('falls back to black with reduced motion, when turned off, or when the video fails to play', async () => {
-    const stream = {} as MediaStream;
+    const stream = { getVideoTracks: () => [{ readyState: 'live' }] } as unknown as MediaStream;
     expect(pipBackground({ cameraOn: true, stream, reducedMotion: false, failed: false })).toBe('camera');
     expect(pipBackground({ cameraOn: true, stream, reducedMotion: true, failed: false })).toBe('black');
     expect(pipBackground({ cameraOn: false, stream, reducedMotion: false, failed: false })).toBe('black');
     expect(pipBackground({ cameraOn: true, stream, reducedMotion: false, failed: true })).toBe('black');
     expect(pipBackground({ cameraOn: true, stream: null, reducedMotion: false, failed: false })).toBe('black');
-    expect(await attachPreview(fakeVideo(true), stream)).toBe(false);
+    expect(await attachPreview(fakeVideo(true), stream)).toEqual({ ok: false, reason: 'video.play() was rejected (Error)' });
+  });
+});
+
+describe('the preview uses the live camera track', () => {
+  it("plays the controller's own live track and never clones it, so nothing extra can keep the camera on", async () => {
+    const t = setup();
+    await t.c.sync(TARGET);
+    const video = fakeVideo();
+    await expect(attachPreview(video, t.stream)).resolves.toEqual({ ok: true });
+    expect(video.srcObject).toBe(t.stream);
+    expect(video.plays).toBe(1); // play() called explicitly
+    expect(t.tracks[0].clone).not.toHaveBeenCalled();
+    await t.c.sync(null); // stopwatch paused
+    await t.syncPreview(video);
+    expect(video.srcObject).toBeNull();
+    expect(t.tracks.every((tr) => tr.stop.mock.calls.length > 0)).toBe(true); // every track (no clones exist) stopped
+  });
+
+  it('an ended track is not attached; the reason is reported', async () => {
+    const ended = { getVideoTracks: () => [{ readyState: 'ended' }] } as unknown as MediaStream;
+    const video = fakeVideo();
+    await expect(attachPreview(video, ended)).resolves.toEqual({ ok: false, reason: 'the camera track is not live' });
+    expect(video.srcObject).toBeNull();
+    expect(video.plays).toBe(0);
   });
 });
 
